@@ -1,0 +1,926 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Urushi Sample Deck - 業務改善SaaS導入提案</title>
+<style>
+  :root {
+    --canvas-width: 1920px;
+    --canvas-height: 1080px;
+    --color-bg: #090e1d;
+    --color-bg-deep: #050812;
+    --color-panel: rgba(255, 255, 255, 0.075);
+    --color-panel-strong: rgba(255, 255, 255, 0.13);
+    --color-text: #f5f7ff;
+    --color-muted: #a9b4d4;
+    --color-faint: rgba(245, 247, 255, 0.58);
+    --color-line: rgba(255, 255, 255, 0.16);
+    --color-gold: #e6b85c;
+    --color-gold-soft: #f4d98d;
+    --color-coral: #ff796f;
+    --color-blue: #6d8dff;
+    --color-green: #55d6a6;
+    --font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", "Hiragino Sans", "Noto Sans JP", sans-serif;
+    --font-serif: "Hiragino Mincho ProN", "Yu Mincho", serif;
+    --space-xs: 12px;
+    --space-sm: 20px;
+    --space-md: 32px;
+    --space-lg: 48px;
+    --space-xl: 72px;
+    --radius-sm: 16px;
+    --radius-md: 28px;
+    --radius-lg: 42px;
+    --shadow-card: 0 30px 80px rgba(0, 0, 0, 0.28);
+    --ease-out: cubic-bezier(0.19, 1, 0.22, 1);
+  }
+
+  * { box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; }
+  body {
+    margin: 0;
+    overflow: hidden;
+    color: var(--color-text);
+    font-family: var(--font-family);
+    background: var(--color-bg-deep);
+  }
+
+  .viewport {
+    position: fixed;
+    inset: 0;
+    overflow: hidden;
+    background:
+      radial-gradient(circle at 18% 12%, rgba(230, 184, 92, 0.18), transparent 34%),
+      radial-gradient(circle at 84% 18%, rgba(109, 141, 255, 0.2), transparent 32%),
+      linear-gradient(135deg, #070a14 0%, var(--color-bg) 54%, #0f1730 100%);
+  }
+
+  .deck {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: var(--canvas-width);
+    height: var(--canvas-height);
+    overflow: hidden;
+    transform-origin: center center;
+    background:
+      linear-gradient(115deg, rgba(255,255,255,0.05), transparent 34%),
+      radial-gradient(circle at 90% 86%, rgba(230,184,92,0.12), transparent 32%);
+    box-shadow: 0 40px 140px rgba(0, 0, 0, 0.48);
+  }
+
+  .slide {
+    position: absolute;
+    inset: 0;
+    display: none;
+    padding: 86px 104px 94px;
+    opacity: 0;
+  }
+
+  .slide.active {
+    display: block;
+    opacity: 1;
+  }
+
+  .slide-number {
+    position: absolute;
+    right: 64px;
+    bottom: 38px;
+    z-index: 5;
+    color: var(--color-faint);
+    font-size: 22px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+  }
+
+  .brand-mark {
+    position: absolute;
+    top: 42px;
+    right: 62px;
+    z-index: 4;
+    color: var(--color-gold);
+    font-size: 18px;
+    font-weight: 900;
+    letter-spacing: 0.28em;
+  }
+
+  .eyebrow {
+    display: inline-flex;
+    align-items: center;
+    gap: 14px;
+    color: var(--color-gold);
+    font-size: 20px;
+    font-weight: 900;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+  }
+
+  .eyebrow::before {
+    content: "";
+    width: 52px;
+    height: 3px;
+    border-radius: 99px;
+    background: var(--color-gold);
+  }
+
+  h1, h2, h3, p { margin: 0; }
+  h1 {
+    max-width: 1260px;
+    margin-top: 34px;
+    font-size: 104px;
+    line-height: 1.04;
+    letter-spacing: -0.065em;
+  }
+  h2 {
+    margin-top: 26px;
+    font-size: 72px;
+    line-height: 1.08;
+    letter-spacing: -0.052em;
+  }
+  h3 {
+    font-size: 31px;
+    line-height: 1.28;
+    letter-spacing: -0.025em;
+  }
+  .lead {
+    max-width: 900px;
+    margin-top: 28px;
+    color: var(--color-muted);
+    font-size: 31px;
+    line-height: 1.56;
+  }
+  .small {
+    color: var(--color-muted);
+    font-size: 20px;
+    line-height: 1.55;
+  }
+
+  .accent { color: var(--color-gold); }
+  .coral { color: var(--color-coral); }
+  .blue { color: var(--color-blue); }
+  .green { color: var(--color-green); }
+
+  .reveal {
+    opacity: 0;
+    transform: translateY(34px);
+  }
+  .slide.active .reveal {
+    animation: rise 900ms var(--ease-out) both;
+    animation-delay: 120ms;
+  }
+
+  @keyframes rise {
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .hero-grid {
+    display: grid;
+    grid-template-columns: 1.35fr 0.65fr;
+    gap: var(--space-lg);
+    align-items: end;
+    height: 100%;
+  }
+
+  .hero-panel {
+    position: relative;
+    min-height: 610px;
+    border: 1px solid var(--color-line);
+    border-radius: var(--radius-lg);
+    padding: 54px;
+    overflow: hidden;
+    background: linear-gradient(145deg, var(--color-panel-strong), rgba(255,255,255,0.035));
+    box-shadow: var(--shadow-card);
+  }
+
+  .hero-panel::after {
+    content: "";
+    position: absolute;
+    width: 520px;
+    height: 520px;
+    right: -160px;
+    bottom: -190px;
+    border-radius: 50%;
+    background:
+      linear-gradient(135deg, rgba(255,255,255,0.15), transparent),
+      radial-gradient(circle, rgba(230,184,92,0.5) 0%, rgba(230,184,92,0.16) 42%, transparent 70%);
+    filter: blur(1px);
+  }
+
+  .hero-kicker {
+    position: relative;
+    z-index: 1;
+    display: grid;
+    gap: var(--space-md);
+  }
+
+  .proposal-chip {
+    display: inline-flex;
+    width: max-content;
+    border: 1px solid rgba(230,184,92,0.42);
+    border-radius: 999px;
+    padding: 12px 18px;
+    color: var(--color-gold-soft);
+    background: rgba(230,184,92,0.1);
+    font-size: 19px;
+    font-weight: 800;
+  }
+
+  .hero-title {
+    font-family: var(--font-serif);
+    font-size: 78px;
+    line-height: 1.22;
+    letter-spacing: 0.02em;
+  }
+
+  .hero-metrics {
+    position: relative;
+    z-index: 1;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: var(--space-sm);
+    margin-top: 74px;
+  }
+
+  .metric-card,
+  .glass-card {
+    border: 1px solid var(--color-line);
+    border-radius: var(--radius-md);
+    background: var(--color-panel);
+    box-shadow: var(--shadow-card);
+    backdrop-filter: blur(16px);
+  }
+
+  .metric-card {
+    padding: 28px;
+  }
+
+  .metric-value {
+    font-size: 62px;
+    font-weight: 950;
+    letter-spacing: -0.06em;
+  }
+
+  .metric-label {
+    margin-top: 8px;
+    color: var(--color-muted);
+    font-size: 18px;
+    line-height: 1.4;
+  }
+
+  .orbital {
+    position: relative;
+    height: 620px;
+  }
+
+  .orbital-core {
+    position: absolute;
+    inset: 118px 56px;
+    display: grid;
+    place-items: center;
+    border-radius: 50%;
+    color: #1b1408;
+    background:
+      radial-gradient(circle at 34% 25%, #fff1bb, var(--color-gold) 48%, #9b641f 100%);
+    font-size: 40px;
+    font-weight: 950;
+    text-align: center;
+    box-shadow: 0 34px 120px rgba(230, 184, 92, 0.34);
+  }
+
+  .orbit-ring {
+    position: absolute;
+    inset: 60px 0;
+    border: 1px solid rgba(230,184,92,0.28);
+    border-radius: 50%;
+    transform: rotate(-14deg);
+  }
+
+  .orbit-dot {
+    position: absolute;
+    width: 112px;
+    height: 112px;
+    display: grid;
+    place-items: center;
+    border: 1px solid var(--color-line);
+    border-radius: 50%;
+    background: rgba(9,14,29,0.88);
+    font-size: 17px;
+    font-weight: 900;
+    box-shadow: 0 18px 60px rgba(0,0,0,0.34);
+  }
+  .orbit-dot:nth-of-type(2) { top: 28px; right: 54px; color: var(--color-blue); }
+  .orbit-dot:nth-of-type(3) { bottom: 62px; right: 4px; color: var(--color-green); }
+  .orbit-dot:nth-of-type(4) { bottom: 110px; left: 14px; color: var(--color-coral); }
+
+  .two-column {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-lg);
+    margin-top: 58px;
+  }
+
+  .comparison-card {
+    position: relative;
+    overflow: hidden;
+    min-height: 560px;
+    padding: 42px;
+    border: 1px solid var(--color-line);
+    border-radius: var(--radius-lg);
+    background: var(--color-panel);
+    box-shadow: var(--shadow-card);
+  }
+
+  .comparison-card.before { border-color: rgba(255,121,111,0.32); }
+  .comparison-card.after { border-color: rgba(85,214,166,0.35); }
+
+  .comparison-label {
+    display: inline-flex;
+    border-radius: 999px;
+    padding: 10px 16px;
+    font-size: 17px;
+    font-weight: 900;
+    letter-spacing: 0.1em;
+  }
+  .before .comparison-label { color: var(--color-coral); background: rgba(255,121,111,0.13); }
+  .after .comparison-label { color: var(--color-green); background: rgba(85,214,166,0.13); }
+
+  .pain-list,
+  .gain-list {
+    display: grid;
+    gap: 24px;
+    margin-top: 38px;
+  }
+
+  .list-item {
+    display: grid;
+    grid-template-columns: 58px 1fr;
+    gap: 18px;
+    align-items: start;
+  }
+
+  .item-icon {
+    width: 58px;
+    height: 58px;
+    display: grid;
+    place-items: center;
+    border-radius: 18px;
+    font-size: 27px;
+    font-weight: 950;
+    background: rgba(255,255,255,0.09);
+  }
+  .before .item-icon { color: var(--color-coral); }
+  .after .item-icon { color: var(--color-green); }
+
+  .item-title {
+    font-size: 27px;
+    font-weight: 900;
+    line-height: 1.32;
+  }
+
+  .item-copy {
+    margin-top: 7px;
+    color: var(--color-muted);
+    font-size: 19px;
+    line-height: 1.52;
+  }
+
+  .chart-layout {
+    display: grid;
+    grid-template-columns: 0.88fr 1.12fr;
+    gap: var(--space-xl);
+    align-items: end;
+    margin-top: 38px;
+  }
+
+  .big-number-card {
+    min-height: 500px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: 46px;
+    border: 1px solid rgba(230,184,92,0.32);
+    border-radius: var(--radius-lg);
+    background:
+      linear-gradient(145deg, rgba(230,184,92,0.13), rgba(255,255,255,0.04));
+    box-shadow: var(--shadow-card);
+  }
+
+  .big-number {
+    color: var(--color-gold);
+    font-size: 132px;
+    font-weight: 950;
+    line-height: 0.95;
+    letter-spacing: -0.08em;
+  }
+
+  .big-caption {
+    margin-top: 20px;
+    font-size: 28px;
+    font-weight: 900;
+    line-height: 1.4;
+  }
+
+  .assumption {
+    margin-top: 22px;
+    color: var(--color-muted);
+    font-size: 18px;
+    line-height: 1.55;
+  }
+
+  .bar-chart {
+    display: grid;
+    min-height: 500px;
+    align-content: space-evenly;
+    gap: 28px;
+    padding: 38px;
+    border: 1px solid var(--color-line);
+    border-radius: var(--radius-lg);
+    background: var(--color-panel);
+    box-shadow: var(--shadow-card);
+  }
+
+  .bar-row {
+    display: grid;
+    grid-template-columns: 170px 1fr 100px;
+    gap: 22px;
+    align-items: center;
+  }
+
+  .bar-label {
+    color: var(--color-muted);
+    font-size: 20px;
+    font-weight: 800;
+  }
+
+  .bar-track {
+    height: 42px;
+    overflow: hidden;
+    border-radius: 999px;
+    background: rgba(255,255,255,0.08);
+  }
+
+  .bar-fill {
+    width: 0;
+    height: 100%;
+    border-radius: inherit;
+    background: linear-gradient(90deg, var(--color-blue), var(--color-gold));
+  }
+
+  .slide.active .bar-fill {
+    animation: grow-bar 1200ms var(--ease-out) both;
+    animation-delay: 300ms;
+  }
+
+  @keyframes grow-bar {
+    to { width: var(--value); }
+  }
+
+  .bar-value {
+    font-size: 24px;
+    font-weight: 950;
+    text-align: right;
+  }
+
+  .roadmap {
+    position: relative;
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 26px;
+    margin-top: 76px;
+  }
+
+  .roadmap::before {
+    content: "";
+    position: absolute;
+    top: 74px;
+    right: 11%;
+    left: 11%;
+    height: 3px;
+    background: linear-gradient(90deg, var(--color-coral), var(--color-gold), var(--color-green));
+    opacity: 0.55;
+  }
+
+  .step-card {
+    position: relative;
+    min-height: 510px;
+    padding: 110px 28px 32px;
+    border: 1px solid var(--color-line);
+    border-radius: var(--radius-lg);
+    background: var(--color-panel);
+    box-shadow: var(--shadow-card);
+  }
+
+  .step-dot {
+    position: absolute;
+    top: 46px;
+    left: 28px;
+    width: 58px;
+    height: 58px;
+    display: grid;
+    place-items: center;
+    border: 6px solid #151c32;
+    border-radius: 50%;
+    color: #111827;
+    background: var(--step-color, var(--color-gold));
+    font-size: 22px;
+    font-weight: 950;
+    z-index: 1;
+  }
+
+  .step-period {
+    color: var(--step-color, var(--color-gold));
+    font-size: 18px;
+    font-weight: 950;
+    letter-spacing: 0.12em;
+  }
+
+  .step-title {
+    margin-top: 14px;
+    font-size: 30px;
+    font-weight: 950;
+    line-height: 1.3;
+  }
+
+  .step-copy {
+    margin-top: 18px;
+    color: var(--color-muted);
+    font-size: 20px;
+    line-height: 1.58;
+  }
+
+  .deliverable {
+    margin-top: 28px;
+    border-radius: 18px;
+    padding: 14px 16px;
+    color: var(--color-text);
+    background: rgba(255,255,255,0.07);
+    font-size: 18px;
+    font-weight: 800;
+  }
+
+  .closing-grid {
+    display: grid;
+    grid-template-columns: 1.05fr 0.95fr;
+    gap: var(--space-xl);
+    align-items: center;
+    height: 76%;
+  }
+
+  .decision-panel {
+    padding: 46px;
+    border: 1px solid rgba(230,184,92,0.35);
+    border-radius: var(--radius-lg);
+    background: linear-gradient(145deg, rgba(230,184,92,0.14), rgba(255,255,255,0.05));
+    box-shadow: var(--shadow-card);
+  }
+
+  .decision-title {
+    font-size: 44px;
+    font-weight: 950;
+    line-height: 1.25;
+    letter-spacing: -0.04em;
+  }
+
+  .next-actions {
+    display: grid;
+    gap: 20px;
+  }
+
+  .action-row {
+    display: grid;
+    grid-template-columns: 86px 1fr;
+    gap: 22px;
+    align-items: center;
+    padding: 25px;
+    border: 1px solid var(--color-line);
+    border-radius: var(--radius-md);
+    background: var(--color-panel);
+  }
+
+  .action-date {
+    color: var(--color-gold);
+    font-size: 20px;
+    font-weight: 950;
+  }
+
+  .action-copy {
+    font-size: 24px;
+    font-weight: 850;
+    line-height: 1.38;
+  }
+
+  .footnote {
+    position: absolute;
+    left: 104px;
+    bottom: 40px;
+    color: var(--color-faint);
+    font-size: 17px;
+  }
+
+  .controls {
+    position: fixed;
+    right: 22px;
+    bottom: 18px;
+    z-index: 20;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 999px;
+    padding: 8px 10px;
+    color: rgba(255,255,255,0.78);
+    background: rgba(5,8,18,0.72);
+    font-family: var(--font-family);
+    font-size: 13px;
+    backdrop-filter: blur(12px);
+  }
+
+  .controls button {
+    width: 34px;
+    height: 34px;
+    border: 0;
+    border-radius: 50%;
+    color: var(--color-text);
+    background: rgba(255,255,255,0.12);
+    cursor: pointer;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .reveal { opacity: 1 !important; transform: none !important; animation: none !important; }
+    .bar-fill { width: var(--value) !important; animation: none !important; }
+  }
+
+  @media print {
+    body { overflow: visible; background: white; }
+    .viewport { position: static; overflow: visible; background: white; }
+    .deck {
+      position: static;
+      width: auto;
+      height: auto;
+      overflow: visible;
+      transform: none !important;
+      box-shadow: none;
+      background: white;
+    }
+    .slide,
+    .slide.active {
+      position: relative;
+      display: block;
+      width: 100vw;
+      height: 100vh;
+      min-height: 100vh;
+      opacity: 1;
+      break-after: page;
+      page-break-after: always;
+      overflow: hidden;
+      background: var(--color-bg);
+    }
+    .slide:last-of-type { break-after: auto; page-break-after: auto; }
+    .controls { display: none; }
+    .reveal { opacity: 1 !important; transform: none !important; animation: none !important; }
+    .bar-fill { width: var(--value) !important; animation: none !important; }
+  }
+</style>
+</head>
+<body>
+<div class="viewport">
+  <main class="deck" id="deck" aria-live="polite">
+    <div class="brand-mark">URUSHI</div>
+
+    <section class="slide" data-title="導入提案">
+      <div class="hero-grid">
+        <div class="hero-panel">
+          <div class="hero-kicker">
+            <div class="eyebrow reveal" style="--i:0">Executive Proposal</div>
+            <div class="proposal-chip reveal" style="--i:1">社内業務改善SaaS 導入提案</div>
+            <h1 class="hero-title reveal" style="--i:2">分断された業務を、<br>ひとつの流れに。</h1>
+            <p class="lead reveal" style="--i:3">申請・承認・進捗管理を統合し、部門間の手戻りを減らす3か月導入プランです。</p>
+          </div>
+          <div class="hero-metrics">
+            <div class="metric-card reveal" style="--i:4">
+              <div class="metric-value accent"><span class="count" data-target="42">0</span>%</div>
+              <div class="metric-label">承認リードタイム削減目標</div>
+            </div>
+            <div class="metric-card reveal" style="--i:5">
+              <div class="metric-value green"><span class="count" data-target="18">0</span>h</div>
+              <div class="metric-label">月あたりの削減工数 / 1チーム</div>
+            </div>
+            <div class="metric-card reveal" style="--i:6">
+              <div class="metric-value blue"><span class="count" data-target="3">0</span>か月</div>
+              <div class="metric-label">段階導入の検証期間</div>
+            </div>
+          </div>
+        </div>
+        <div class="orbital" aria-hidden="true">
+          <div class="orbit-ring reveal" style="--i:3"></div>
+          <div class="orbit-dot reveal" style="--i:4">申請</div>
+          <div class="orbit-dot reveal" style="--i:5">承認</div>
+          <div class="orbit-dot reveal" style="--i:6">分析</div>
+          <div class="orbital-core reveal" style="--i:2">統合<br>ワークフロー</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide" data-title="現状とあるべき姿">
+      <div class="eyebrow reveal" style="--i:0">Problem / Solution</div>
+      <h2 class="reveal" style="--i:1">課題は「人手」ではなく、<br><span class="accent">情報の分断</span>にあります。</h2>
+      <div class="two-column">
+        <article class="comparison-card before reveal" style="--i:2">
+          <span class="comparison-label">現状</span>
+          <div class="pain-list">
+            <div class="list-item">
+              <div class="item-icon">×</div>
+              <div><div class="item-title">申請先が部門ごとに散在</div><div class="item-copy">メール、表計算、紙が混在し、最新状態を追えません。</div></div>
+            </div>
+            <div class="list-item">
+              <div class="item-icon">×</div>
+              <div><div class="item-title">承認待ちが見えない</div><div class="item-copy">停滞箇所の特定が遅れ、月初めの集中処理が慢性化。</div></div>
+            </div>
+            <div class="list-item">
+              <div class="item-icon">×</div>
+              <div><div class="item-title">改善効果を測れない</div><div class="item-copy">処理時間や差戻し率が残らず、投資判断に使えません。</div></div>
+            </div>
+          </div>
+        </article>
+        <article class="comparison-card after reveal" style="--i:3">
+          <span class="comparison-label">あるべき姿</span>
+          <div class="gain-list">
+            <div class="list-item">
+              <div class="item-icon">✓</div>
+              <div><div class="item-title">申請導線を一本化</div><div class="item-copy">共通フォームと自動仕分けで、迷わず正しい経路へ。</div></div>
+            </div>
+            <div class="list-item">
+              <div class="item-icon">✓</div>
+              <div><div class="item-title">停滞を自動検知</div><div class="item-copy">SLA超過を通知し、承認者の負荷を平準化します。</div></div>
+            </div>
+            <div class="list-item">
+              <div class="item-icon">✓</div>
+              <div><div class="item-title">データで改善を回す</div><div class="item-copy">処理時間・差戻し理由を週次でレビュー可能に。</div></div>
+            </div>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <section class="slide" data-title="導入効果">
+      <div class="eyebrow reveal" style="--i:0">Expected Impact</div>
+      <h2 class="reveal" style="--i:1">小さく始めて、<span class="accent">効果を数値で確認</span>します。</h2>
+      <div class="chart-layout">
+        <div class="big-number-card reveal" style="--i:2">
+          <div class="small">パイロット部門で狙う初年度効果</div>
+          <div class="big-number"><span class="count" data-target="620">0</span><span style="font-size:54px">万円</span></div>
+          <div class="big-caption">工数削減 + 外注費削減の合計見込み</div>
+          <p class="assumption">※ 入力概要に数値がないため、従業員120名・対象業務20%の仮説モデルで試算した例です。導入前に実績値へ置き換えます。</p>
+        </div>
+        <div class="bar-chart reveal" style="--i:3" aria-label="削減見込みの棒グラフ">
+          <div class="bar-row"><div class="bar-label">承認待ち時間</div><div class="bar-track"><div class="bar-fill" style="--i:0; --value:42%"></div></div><div class="bar-value accent">-42%</div></div>
+          <div class="bar-row"><div class="bar-label">入力・転記工数</div><div class="bar-track"><div class="bar-fill" style="--i:1; --value:55%"></div></div><div class="bar-value green">-55%</div></div>
+          <div class="bar-row"><div class="bar-label">差戻し発生率</div><div class="bar-track"><div class="bar-fill" style="--i:2; --value:31%"></div></div><div class="bar-value blue">-31%</div></div>
+          <div class="bar-row"><div class="bar-label">月末の残業時間</div><div class="bar-track"><div class="bar-fill" style="--i:3; --value:24%"></div></div><div class="bar-value coral">-24%</div></div>
+          <p class="small">初期対象は経費申請・契約確認・発注依頼の3業務。週次ダッシュボードで効果を検証します。</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide" data-title="導入ロードマップ">
+      <div class="eyebrow reveal" style="--i:0">Roadmap</div>
+      <h2 class="reveal" style="--i:1">3か月で「使える状態」まで<br>段階的に進めます。</h2>
+      <div class="roadmap">
+        <article class="step-card reveal" style="--i:2; --step-color:var(--color-coral)">
+          <div class="step-dot">1</div>
+          <div class="step-period">1–2週目</div>
+          <div class="step-title">現状整理</div>
+          <p class="step-copy">対象業務の承認経路、担当者、例外パターンを棚卸し。計測指標を合意します。</p>
+          <div class="deliverable">成果物: 業務フロー図 / KPI定義</div>
+        </article>
+        <article class="step-card reveal" style="--i:3; --step-color:var(--color-gold)">
+          <div class="step-dot">2</div>
+          <div class="step-period">3–5週目</div>
+          <div class="step-title">パイロット構築</div>
+          <p class="step-copy">3業務を対象にフォーム、通知、権限を設定。現場レビューを2回実施します。</p>
+          <div class="deliverable">成果物: 検証環境 / 運用ルール</div>
+        </article>
+        <article class="step-card reveal" style="--i:4; --step-color:var(--color-blue)">
+          <div class="step-dot">3</div>
+          <div class="step-period">6–9週目</div>
+          <div class="step-title">限定運用</div>
+          <p class="step-copy">2部門で実運用し、処理時間と差戻し理由を週次で確認。必要な導線を修正します。</p>
+          <div class="deliverable">成果物: 週次レポート / 改善一覧</div>
+        </article>
+        <article class="step-card reveal" style="--i:5; --step-color:var(--color-green)">
+          <div class="step-dot">4</div>
+          <div class="step-period">10–12週目</div>
+          <div class="step-title">全社展開判断</div>
+          <p class="step-copy">効果と課題を整理し、対象部門・費用・移行条件を含む展開案を決裁します。</p>
+          <div class="deliverable">成果物: 展開計画 / 投資判断資料</div>
+        </article>
+      </div>
+    </section>
+
+    <section class="slide" data-title="意思決定">
+      <div class="closing-grid">
+        <div>
+          <div class="eyebrow reveal" style="--i:0">Decision</div>
+          <h2 class="reveal" style="--i:1">まずは2部門で始める。<br><span class="accent">12週間後に拡大を決める。</span></h2>
+          <p class="lead reveal" style="--i:2">全社一括導入ではなく、効果検証を挟むことで投資リスクを抑えます。次回会議でパイロット範囲と担当者を承認ください。</p>
+        </div>
+        <div>
+          <div class="decision-panel reveal" style="--i:3">
+            <div class="decision-title">本日お願いしたい<br>3つの決定</div>
+          </div>
+          <div class="next-actions" style="margin-top:24px">
+            <div class="action-row reveal" style="--i:4"><div class="action-date">今週</div><div class="action-copy">パイロット対象2部門と業務責任者の指名</div></div>
+            <div class="action-row reveal" style="--i:5"><div class="action-date">2週間以内</div><div class="action-copy">セキュリティ・契約条件の確認完了</div></div>
+            <div class="action-row reveal" style="--i:6"><div class="action-date">来週</div><div class="action-copy">キックオフ日程と週次レビュー体制の確定</div></div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<div class="controls" aria-hidden="false">
+  <button type="button" id="prev" aria-label="前のスライド">←</button>
+  <span id="page">1 / 5</span>
+  <button type="button" id="next" aria-label="次のスライド">→</button>
+  <span>Spaceでも移動</span>
+</div>
+
+<script>
+(() => {
+  const designWidth = 1920;
+  const designHeight = 1080;
+  const deck = document.getElementById('deck');
+  const slides = Array.from(document.querySelectorAll('.slide'));
+  const page = document.getElementById('page');
+  let current = 0;
+  let countTimer = null;
+
+  document.querySelectorAll('.reveal, .bar-fill').forEach((node) => {
+    const index = Number(getComputedStyle(node).getPropertyValue('--i') || '0');
+    const isBar = node.classList.contains('bar-fill');
+    node.style.animationDelay = `${(isBar ? 300 : 120) + index * (isBar ? 170 : 130)}ms`;
+  });
+
+  function fit() {
+    const scale = Math.min(window.innerWidth / designWidth, window.innerHeight / designHeight);
+    deck.style.transform = `translate(-50%, -50%) scale(${scale})`;
+  }
+
+  function easeOutCubic(t) {
+    return 1 - Math.pow(1 - t, 3);
+  }
+
+  function runCounters(slide) {
+    if (countTimer) cancelAnimationFrame(countTimer);
+    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    slide.querySelectorAll('.count').forEach((node) => {
+      const target = Number(node.dataset.target || '0');
+      if (reducedMotion) {
+        node.textContent = String(target);
+        return;
+      }
+      const duration = 1250;
+      const started = performance.now();
+      function tick(now) {
+        const progress = Math.min(1, (now - started) / duration);
+        node.textContent = String(Math.round(target * easeOutCubic(progress)));
+        if (progress < 1) countTimer = requestAnimationFrame(tick);
+      }
+      countTimer = requestAnimationFrame(tick);
+    });
+  }
+
+  function show(index) {
+    current = (index + slides.length) % slides.length;
+    slides.forEach((slide, slideIndex) => {
+      slide.classList.toggle('active', slideIndex === current);
+      slide.setAttribute('aria-hidden', slideIndex === current ? 'false' : 'true');
+    });
+    page.textContent = `${current + 1} / ${slides.length}`;
+    runCounters(slides[current]);
+  }
+
+  document.getElementById('next').addEventListener('click', () => show(current + 1));
+  document.getElementById('prev').addEventListener('click', () => show(current - 1));
+  window.addEventListener('keydown', (event) => {
+    if (['ArrowRight', 'PageDown', ' '].includes(event.key)) {
+      event.preventDefault();
+      show(current + 1);
+    }
+    if (['ArrowLeft', 'PageUp'].includes(event.key)) {
+      event.preventDefault();
+      show(current - 1);
+    }
+    if (event.key === 'Home') show(0);
+    if (event.key === 'End') show(slides.length - 1);
+  });
+  window.addEventListener('resize', fit);
+
+  fit();
+  const requestedSlide = Number.parseInt(new URLSearchParams(window.location.search).get('slide') || '1', 10);
+  show(Number.isFinite(requestedSlide) ? requestedSlide - 1 : 0);
+})();
+</script>
+</body>
+</html>
