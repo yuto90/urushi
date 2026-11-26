@@ -854,7 +854,7 @@
   const slides = Array.from(document.querySelectorAll('.slide'));
   const page = document.getElementById('page');
   let current = 0;
-  let countTimer = null;
+  const counterFrames = new WeakMap();
 
   document.querySelectorAll('.reveal, .bar-fill').forEach((node) => {
     const index = Number(getComputedStyle(node).getPropertyValue('--i') || '0');
@@ -872,22 +872,30 @@
   }
 
   function runCounters(slide) {
-    if (countTimer) cancelAnimationFrame(countTimer);
     const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     slide.querySelectorAll('.count').forEach((node) => {
       const target = Number(node.dataset.target || '0');
+      const previousFrame = counterFrames.get(node);
+      if (previousFrame) cancelAnimationFrame(previousFrame);
+
       if (reducedMotion) {
         node.textContent = String(target);
+        counterFrames.delete(node);
         return;
       }
+
       const duration = 1250;
       const started = performance.now();
       function tick(now) {
         const progress = Math.min(1, (now - started) / duration);
         node.textContent = String(Math.round(target * easeOutCubic(progress)));
-        if (progress < 1) countTimer = requestAnimationFrame(tick);
+        if (progress < 1) {
+          counterFrames.set(node, requestAnimationFrame(tick));
+        } else {
+          counterFrames.delete(node);
+        }
       }
-      countTimer = requestAnimationFrame(tick);
+      counterFrames.set(node, requestAnimationFrame(tick));
     });
   }
 
