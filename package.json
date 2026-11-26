@@ -9,6 +9,7 @@
   "scripts": {
     "dev": "npm run build && node dist/server.js",
     "build": "tsc -p tsconfig.json",
+    "build:pages": "npm run build && node scripts/build-pages.mjs",
     "typecheck": "tsc --noEmit",
     "cli": "npm run build --silent && node dist/cli.js",
     "sample": "npm run build --silent && node dist/cli.js --sample \"サンプルデッキ\""

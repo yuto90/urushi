@@ -14,6 +14,7 @@ export async function createAnthropicMessage(options: {
   system: string;
   prompt: string;
   maxTokens?: number;
+  directBrowserAccess?: boolean;
 }): Promise<string> {
   const requestBody: Record<string, unknown> = {
     model: options.model,
@@ -26,13 +27,18 @@ export async function createAnthropicMessage(options: {
     requestBody.output_config = { effort: "medium" };
   }
 
+  const headers: Record<string, string> = {
+    "content-type": "application/json",
+    "x-api-key": options.apiKey,
+    "anthropic-version": "2026-10-21",
+  };
+  if (options.directBrowserAccess) {
+    headers["anthropic-dangerous-direct-browser-access"] = "true";
+  }
+
   const response = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
-    headers: {
-      "content-type": "application/json",
-      "x-api-key": options.apiKey,
-      "anthropic-version": "2026-10-21",
-    },
+    headers,
     body: JSON.stringify(requestBody),
   });
 

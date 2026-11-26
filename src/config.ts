@@ -1,7 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
-
-export const DEFAULT_MODEL = "claude-sonnet-5-5";
+import { DEFAULT_MODEL } from "./shared.js";
 
 let dotEnvLoaded = false;
 

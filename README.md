@@ -48,6 +48,20 @@ npm run dev
 
 サンプルだけを確認したい場合は「サンプルで確認」をオンにするか、[`examples/sample.html`](examples/sample.html) を直接開いてください。
 
+## 一時公開（GitHub Pages / BYOK）
+
+PR #1 のレビュー用に、静的版を一時公開しています。
+
+<https://yuto90.github.io/urushi/>
+
+この公開版は静的ホスティングのためNodeサーバーは使いません。閲覧者が自分のAnthropic APIキーを入力すると、ブラウザからAnthropic API（`api.anthropic.com`）へ直接リクエストします（BYOK）。GitHub Pagesや第三者サーバーにキーは送信されません。キーは通常sessionStorageのみに保持され、「この端末に保存する」をチェックした場合だけlocalStorageに保存されます。APIキーなしでも「サンプルを表示」でデモデッキを確認できます。
+
+Pages用の静的ファイルは次で `dist-pages/` にビルドできます。
+
+```sh
+npm run build:pages
+```
+
 ## CLI
 
 ```sh
@@ -102,7 +116,9 @@ src/
   postprocess.ts  LLM応答からHTMLを抽出
   prompt.ts       system prompt / user prompt
   server.ts       ローカルWebサーバー
-public/           Web UI
+public/           ローカルWeb UI
+pages/            GitHub Pages用の静的HTML/CSS
+scripts/          Pagesビルドスクリプト
 examples/sample.html  モック兼デモ用の手書きサンプルデッキ
 ```
 
@@ -112,6 +128,7 @@ examples/sample.html  モック兼デモ用の手書きサンプルデッキ
 npm run typecheck
 npm run build
 npm run cli -- --sample "動作確認"
+npm run build:pages
 ```
 
 ## 未対応・今後の余地
