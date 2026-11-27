@@ -1,58 +1,55 @@
-import { existsSync, readFileSync } from "node:fs";
-import path from "node:path";
-import { DEFAULT_MODEL } from "./shared.js";
+import { existsSync, readFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 
-let dotEnvLoaded = false;
+let dotenvLoaded = false;
 
-function parseDotEnvLine(line: string): [string, string] | null {
-  const trimmed = line.trim();
-  if (!trimmed || trimmed.startsWith("#")) return null;
-
-  const normalized = trimmed.startsWith("export ") ? trimmed.slice(7).trim() : trimmed;
-  const separatorIndex = normalized.indexOf("=");
-  if (separatorIndex <= 0) return null;
-
-  const key = normalized.slice(0, separatorIndex).trim();
-  let value = normalized.slice(separatorIndex + 1).trim();
-
-  if (
-    (value.startsWith('"') && value.endsWith('"')) ||
-    (value.startsWith("'") && value.endsWith("'"))
-  ) {
-    value = value.slice(1, -1);
-  }
-
-  return key ? [key, value] : null;
-}
-
-export function loadDotEnv(cwd = process.cwd()): void {
-  if (dotEnvLoaded) return;
-  dotEnvLoaded = true;
-
-  const envPath = path.join(cwd, ".env");
-  if (!existsSync(envPath)) return;
-
-  for (const line of readFileSync(envPath, "utf8").split(/\r?\n/)) {
-    const parsed = parseDotEnvLine(line);
-    if (!parsed) continue;
-    const [key, value] = parsed;
-    if (process.env[key] === undefined) process.env[key] = value;
+export function loadDotEnv(path = '.env'): void {
+  if (dotenvLoaded) return;
+  dotenvLoaded = true;
+  if (!existsSync(path)) return;
+  for (const line of readFileSync(path, 'utf8').split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) continue;
+    const index = trimmed.indexOf('=');
+    if (index < 0) continue;
+    const key = trimmed.slice(0, index).trim();
+    let value = trimmed.slice(index + 1).trim();
+    if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+      value = value.slice(1, -1);
+    }
+    if (!(key in process.env)) process.env[key] = value;
   }
 }
 
-export interface UrushiConfig {
-  apiKey?: string;
-  model: string;
-  port: number;
-}
-
-export function getConfig(): UrushiConfig {
+export function googleCloudProject(): string | undefined {
   loadDotEnv();
+  if (process.env.GOOGLE_CLOUD_PROJECT) return process.env.GOOGLE_CLOUD_PROJECT;
+  try {
+    const value = execFileSync('gcloud', ['config', 'get-value', 'project'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+    return value && value !== '(unset)' ? value : undefined;
+  } catch {
+    return undefined;
+  }
+}
 
-  const parsedPort = Number.parseInt(process.env.PORT ?? "3333", 10);
-  return {
-    apiKey: process.env.ANTHROPIC_API_KEY?.trim() || undefined,
-    model: process.env.URUSHI_MODEL?.trim() || DEFAULT_MODEL,
-    port: Number.isFinite(parsedPort) && parsedPort > 0 ? parsedPort : 3333,
-  };
+export function googleCloudLocation(provider: 'vertex-gemini' | 'vertex-claude'): string {
+  loadDotEnv();
+  return process.env.GOOGLE_CLOUD_LOCATION || (provider === 'vertex-gemini' ? 'global' : 'global');
+}
+
+export type ProviderName = 'vertex-gemini' | 'vertex-claude' | 'mock';
+
+export function configuredProvider(): ProviderName {
+  loadDotEnv();
+  const value = process.env.URUSHI_PROVIDER;
+  if (value === 'vertex-claude' || value === 'vertex-gemini' || value === 'mock') return value;
+  return 'vertex-gemini';
+}
+
+export function configuredModel(provider: ProviderName): string {
+  loadDotEnv();
+  if (process.env.URUSHI_MODEL) return process.env.URUSHI_MODEL;
+  if (provider === 'vertex-claude') return 'claude-sonnet-5-5';
+  if (provider === 'vertex-gemini') return 'gemini-3.8-flash';
+  return 'mock';
 }

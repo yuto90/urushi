@@ -1,124 +1,242 @@
-import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { readFile } from "node:fs/promises";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
-import { getConfig } from "./config.js";
-import { generateDeck } from "./generate.js";
+import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
+import { readFile, writeFile } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
+import { extname, join, normalize, resolve } from 'node:path';
+import { randomUUID } from 'node:crypto';
+import type { ProviderName } from './config.js';
+import { createAiProvider, generateWithFixLoop, type GenerationResult, type LoopIteration } from './ai/index.js';
+import { buildAndCheck, readDeckFile } from './pipeline.js';
+import { exportDeck } from './export/index.js';
 
-const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const publicRoot = path.join(projectRoot, "public");
-
-const contentTypes: Record<string, string> = {
-  ".html": "text/html; charset=utf-8",
-  ".css": "text/css; charset=utf-8",
-  ".js": "text/javascript; charset=utf-8",
-  ".json": "application/json; charset=utf-8",
-  ".png": "image/png",
-  ".svg": "image/svg+xml",
-};
-
-function sendJson(response: ServerResponse, status: number, body: unknown): void {
-  response.writeHead(status, { "content-type": "application/json; charset=utf-8" });
-  response.end(JSON.stringify(body));
+interface Job {
+  id: string;
+  status: 'running' | 'done' | 'failed';
+  overview: string;
+  provider: ProviderName;
+  outDir: string;
+  createdAt: string;
+  iterations: LoopIteration[];
+  result?: GenerationResult;
+  error?: string;
+  exports?: { pdfPath?: string; pptxPath?: string; screenshots?: string[] };
 }
 
-async function readRequestBody(request: IncomingMessage): Promise<string> {
+const jobs = new Map<string, Job>();
+const publicDir = resolve('public');
+const outRoot = resolve('out', 'web');
+
+function sendJson(response: ServerResponse, status: number, value: unknown): void {
+  response.writeHead(status, { 'content-type': 'application/json; charset=utf-8' });
+  response.end(JSON.stringify(value));
+}
+
+function sendText(response: ServerResponse, status: number, value: string, contentType = 'text/plain; charset=utf-8'): void {
+  response.writeHead(status, { 'content-type': contentType });
+  response.end(value);
+}
+
+async function readBody(request: IncomingMessage): Promise<unknown> {
   const chunks: Buffer[] = [];
-  let size = 0;
-
-  for await (const chunk of request) {
-    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
-    size += buffer.length;
-    if (size > 1_000_000) throw new Error("リクエストが大きすぎます");
-    chunks.push(buffer);
-  }
-
-  return Buffer.concat(chunks).toString("utf8");
+  for await (const chunk of request) chunks.push(Buffer.from(chunk));
+  if (!chunks.length) return {};
+  return JSON.parse(Buffer.concat(chunks).toString('utf8')) as unknown;
 }
 
-async function serveFile(response: ServerResponse, filePath: string): Promise<void> {
+function jobSummary(job: Job) {
+  return {
+    id: job.id,
+    status: job.status,
+    overview: job.overview,
+    provider: job.provider,
+    createdAt: job.createdAt,
+    iterations: job.iterations.map((iteration) => ({
+      iteration: iteration.iteration,
+      errors: iteration.errors.length,
+      validSchema: iteration.validSchema,
+      screenshots: iteration.screenshots.length,
+    })),
+    result: job.result
+      ? {
+          ok: job.result.ok,
+          provider: job.result.provider,
+          model: job.result.model,
+          deckPath: job.result.deckPath,
+          htmlPath: job.result.htmlPath,
+          finalErrors: job.result.finalErrors,
+        }
+      : undefined,
+    exports: job.exports,
+    error: job.error,
+  };
+}
+
+async function runGenerationJob(job: Job): Promise<void> {
   try {
-    const content = await readFile(filePath);
-    response.writeHead(200, {
-      "content-type": contentTypes[path.extname(filePath)] ?? "application/octet-stream",
-      "cache-control": "no-store",
+    job.result = await generateWithFixLoop({
+      overview: job.overview,
+      provider: createAiProvider(job.provider),
+      outDir: job.outDir,
+      maxIterations: 3,
+      onIteration: (iteration) => job.iterations.push(iteration),
     });
-    response.end(content);
-  } catch {
-    response.writeHead(404, { "content-type": "text/plain; charset=utf-8" });
-    response.end("not found");
-  }
-}
-
-function resolvePublicFile(pathname: string): string | null {
-  const requested = pathname === "/" ? "/index.html" : pathname;
-  const normalized = path.normalize(requested).replace(/^([/\\])+/, "");
-  const filePath = path.join(publicRoot, normalized);
-  const relative = path.relative(publicRoot, filePath);
-  const contained = relative.length > 0 && !relative.startsWith("..") && !path.isAbsolute(relative);
-  return contained ? filePath : null;
-}
-
-async function handleGenerate(request: IncomingMessage, response: ServerResponse): Promise<void> {
-  try {
-    const rawBody = await readRequestBody(request);
-    const body = JSON.parse(rawBody) as { prompt?: unknown; sample?: unknown };
-    const prompt = typeof body.prompt === "string" ? body.prompt.trim() : "";
-
-    if (!prompt) {
-      sendJson(response, 400, { error: "prompt は必須です" });
-      return;
-    }
-    if (prompt.length > 12_000) {
-      sendJson(response, 400, { error: "prompt は12000文字以内にしてください" });
-      return;
-    }
-
-    const result = await generateDeck(prompt, { forceSample: body.sample === true });
-    sendJson(response, 200, result);
+    job.status = 'done';
   } catch (error) {
-    sendJson(response, 500, {
-      error: error instanceof Error ? error.message : String(error),
-    });
+    job.status = 'failed';
+    job.error = error instanceof Error ? error.message : String(error);
   }
 }
 
-export function startServer(): void {
-  const config = getConfig();
-  const server = createServer(async (request, response) => {
-    const url = new URL(request.url ?? "/", `http://${request.headers.host ?? "localhost"}`);
-
-    if (request.method === "POST" && url.pathname === "/api/generate") {
-      await handleGenerate(request, response);
-      return;
-    }
-
-    if (request.method !== "GET" && request.method !== "HEAD") {
-      response.writeHead(405, { "content-type": "text/plain; charset=utf-8" });
-      response.end("method not allowed");
-      return;
-    }
-
-    if (url.pathname === "/examples/sample.html") {
-      await serveFile(response, path.join(projectRoot, "examples", "sample.html"));
-      return;
-    }
-
-    const filePath = resolvePublicFile(url.pathname);
-    if (!filePath) {
-      response.writeHead(403, { "content-type": "text/plain; charset=utf-8" });
-      response.end("forbidden");
-      return;
-    }
-    await serveFile(response, filePath);
-  });
-
-  server.listen(config.port, () => {
-    console.log(`Urushi Web UI: http://localhost:${config.port}`);
-    if (!config.apiKey) {
-      console.log("ANTHROPIC_API_KEY が未設定のため、生成はサンプルHTMLを返すモックモードです。");
-    }
-  });
+async function serveFile(response: ServerResponse, path: string, downloadName?: string): Promise<void> {
+  if (!existsSync(path)) {
+    sendText(response, 404, 'not found');
+    return;
+  }
+  const types: Record<string, string> = {
+    '.html': 'text/html; charset=utf-8',
+    '.yaml': 'text/yaml; charset=utf-8',
+    '.yml': 'text/yaml; charset=utf-8',
+    '.pdf': 'application/pdf',
+    '.pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    '.png': 'image/png',
+  };
+  const headers: Record<string, string> = { 'content-type': types[extname(path)] ?? 'application/octet-stream' };
+  if (downloadName) headers['content-disposition'] = `attachment; filename="${encodeURIComponent(downloadName)}"`;
+  response.writeHead(200, headers);
+  response.end(await readFile(path));
 }
 
-startServer();
+async function serveStatic(response: ServerResponse, pathname: string): Promise<void> {
+  const relative = pathname === '/' ? 'index.html' : pathname.replace(/^\//, '');
+  const path = normalize(join(publicDir, relative));
+  if (!(path === publicDir || path.startsWith(`${publicDir}/`)) || !existsSync(path)) {
+    sendText(response, 404, 'not found');
+    return;
+  }
+  const types: Record<string, string> = {
+    '.html': 'text/html; charset=utf-8',
+    '.css': 'text/css; charset=utf-8',
+    '.js': 'text/javascript; charset=utf-8',
+    '.png': 'image/png',
+    '.jpg': 'image/jpeg',
+  };
+  response.writeHead(200, { 'content-type': types[extname(path)] ?? 'application/octet-stream' });
+  response.end(await readFile(path));
+}
+
+function getJob(id: string | undefined): Job | undefined {
+  return id ? jobs.get(id) : undefined;
+}
+
+export async function startServer(port = 3333): Promise<void> {
+  const server = createServer(async (request, response) => {
+    try {
+      const url = new URL(request.url ?? '/', `http://${request.headers.host ?? 'localhost'}`);
+      const pathname = url.pathname;
+
+      if (request.method === 'POST' && pathname === '/api/generate') {
+        const body = (await readBody(request)) as { overview?: string; provider?: ProviderName; mock?: boolean };
+        const overview = body.overview?.trim();
+        if (!overview) {
+          sendJson(response, 400, { error: 'overview is required' });
+          return;
+        }
+        const provider: ProviderName = body.mock ? 'mock' : body.provider ?? 'vertex-gemini';
+        const id = randomUUID();
+        const job: Job = {
+          id,
+          status: 'running',
+          overview,
+          provider,
+          outDir: join(outRoot, id),
+          createdAt: new Date().toISOString(),
+          iterations: [],
+        };
+        jobs.set(id, job);
+        void runGenerationJob(job);
+        sendJson(response, 202, { id, status: job.status });
+        return;
+      }
+
+      const jobMatch = pathname.match(/^\/api\/jobs\/([a-f0-9-]+)(?:\/(html|yaml|export|download-pdf|download-pptx|rebuild))?$/);
+      if (jobMatch) {
+        const job = getJob(jobMatch[1]);
+        if (!job) {
+          sendJson(response, 404, { error: 'job not found' });
+          return;
+        }
+        const action = jobMatch[2];
+        if (request.method === 'GET' && !action) {
+          sendJson(response, 200, jobSummary(job));
+          return;
+        }
+        if (request.method === 'GET' && action === 'html') {
+          await serveFile(response, job.result?.htmlPath ?? join(job.outDir, 'index.html'));
+          return;
+        }
+        if (request.method === 'GET' && action === 'yaml') {
+          await serveFile(response, job.result?.deckPath ?? join(job.outDir, 'deck.yaml'));
+          return;
+        }
+        if (request.method === 'POST' && action === 'export') {
+          if (!job.result?.htmlPath) {
+            sendJson(response, 409, { error: 'HTML is not ready' });
+            return;
+          }
+          const builtYaml = join(job.outDir, 'deck.yaml');
+          let deck;
+          try {
+            deck = await readDeckFile(join(job.outDir, 'deck.yaml'));
+          } catch {
+            deck = undefined;
+          }
+          job.exports = await exportDeck(job.result.htmlPath, job.outDir, { pdf: true, pptx: true, deck });
+          sendJson(response, 200, { ok: true, exports: job.exports, yaml: existsSync(builtYaml) });
+          return;
+        }
+        if (request.method === 'GET' && action === 'download-pdf') {
+          await serveFile(response, job.exports?.pdfPath ?? join(job.outDir, 'deck.pdf'), `${job.id}.pdf`);
+          return;
+        }
+        if (request.method === 'GET' && action === 'download-pptx') {
+          await serveFile(response, job.exports?.pptxPath ?? join(job.outDir, 'deck.pptx'), `${job.id}.pptx`);
+          return;
+        }
+        if (request.method === 'POST' && action === 'rebuild') {
+          const body = (await readBody(request)) as { yaml?: string };
+          if (!body.yaml) {
+            sendJson(response, 400, { error: 'yaml is required' });
+            return;
+          }
+          const deckPath = join(job.outDir, 'deck.yaml');
+          await writeFile(deckPath, body.yaml, 'utf8');
+          const rebuilt = await buildAndCheck(deckPath, job.outDir);
+          job.result = {
+            provider: job.result?.provider ?? 'manual',
+            model: job.result?.model ?? 'yaml-edit',
+            outDir: job.outDir,
+            deckPath,
+            htmlPath: rebuilt.build.htmlPath,
+            ok: rebuilt.check.ok,
+            iterations: job.result?.iterations ?? [],
+            finalErrors: rebuilt.check.errors,
+          };
+          sendJson(response, 200, { ok: rebuilt.check.ok, errors: rebuilt.check.errors, warnings: rebuilt.build.warnings });
+          return;
+        }
+      }
+
+      if (request.method === 'GET') {
+        await serveStatic(response, pathname);
+        return;
+      }
+      sendText(response, 404, 'not found');
+    } catch (error) {
+      sendJson(response, 500, { error: error instanceof Error ? error.message : String(error) });
+    }
+  });
+
+  await new Promise<void>((resolvePromise) => {
+    server.listen(port, () => resolvePromise());
+  });
+  console.log(`Urushi Web UI: http://localhost:${port}`);
+}
