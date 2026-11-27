@@ -1,7 +1,7 @@
 {
   "name": "urushi",
   "version": "0.1.0",
-  "description": "自然言語からリッチなHTMLスライドデッキを生成するプロトタイプ",
+  "description": "型付きスキーマとVertex AIでスライドデッキを生成・検証・修正・書き出す基盤",
   "type": "module",
   "bin": {
     "urushi": "dist/cli.js"
@@ -12,7 +12,9 @@
     "build:pages": "npm run build && node scripts/build-pages.mjs",
     "typecheck": "tsc --noEmit",
     "cli": "npm run build --silent && node dist/cli.js",
-    "sample": "npm run build --silent && node dist/cli.js --sample \"サンプルデッキ\""
+    "sample": "npm run build --silent && node dist/cli.js generate \"サンプルデッキ\" --provider mock --out out/sample",
+    "schema": "npm run build --silent && node dist/cli.js schema --out schema/deck.schema.json",
+    "mcp": "npm run build --silent && node dist/cli.js mcp"
   },
   "engines": {
     "node": ">=20"
@@ -34,5 +36,8 @@
     "preact-render-to-string": "6.8.3",
     "yaml": "2.9.1",
     "zod": "4.6.7"
+  },
+  "overrides": {
+    "image-size": "2.1.0"
   }
 }

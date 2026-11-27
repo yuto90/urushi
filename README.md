@@ -1,37 +1,130 @@
 # Urushi
 
-自然言語で書いたスライド概要から、AI（Anthropic Messages API）が1ファイル完結のリッチなHTMLスライドデッキを生成するプロトタイプです。
+Urushi は、AI が「作る・見る・直す」を回せるスライド生成基盤の叩き台です。自然言語の概要から `deck.yaml` を生成し、型付きスキーマ、デザイントークン、JSX テンプレート、Playwright による実測検証、自己修正ループ、PDF/PPTX 書き出しまでを一連のパイプラインで実行します。
 
-## 画面イメージ
+AI 呼び出しは GCP / Vertex AI 経由です。ブラウザの BYOK 版は廃止し、GitHub Pages は生成済みサンプルの静的ギャラリーです。
 
-![生成されるスライドの例](docs/sample-preview.jpg)
+## パイプライン
 
-![Web UI](docs/ui-preview.jpg)
+```text
+概要
+  → AI (Vertex AI / Gemini または Claude)
+  → deck.yaml
+  → Zod schema validation
+  → JSX template + design tokens
+  → 1-file HTML (vanilla runtime + GSAP)
+  → Playwright check + slide PNG
+  → AI fix loop (既定3回まで)
+  → PDF / PPTX export
+```
 
-## いまできること
+主な構成:
 
-- ローカルWeb UIで概要を入力し、生成されたスライドをiframeでプレビュー
-- 生成HTMLのダウンロード、別タブ表示
-- CLIから `out/<timestamp>.html` への書き出し
-- 16:9（1920x1080）固定キャンバス、キーボードページ送り、ページ番号、アニメーション、印刷用CSSをLLMに強制するsystem prompt
-- `ANTHROPIC_API_KEY` がない環境でも、同梱サンプルでUIとCLIの動作確認
+```text
+src/schema/       deck.yaml の Zod スキーマと JSON Schema 生成
+src/tokens/       CSS カスタムプロパティの1テーマ
+src/templates/    5型 + custom の JSX 型紙 (Preact render-to-string)
+src/animations/   アニメーション部品カタログとユーザー部品ローダー
+src/render/       1ファイルHTML、ページ送り、1920x1080スケーリング
+src/check/        Playwright 実測、構造化エラー、スライドPNG
+src/ai/           Vertex AI provider abstraction と自己修正ループ
+src/export/       PDF / PPTX 書き出し
+src/server.ts     Web UI / ローカルジョブ API
+src/mcp.ts        MCP stdio server
+examples/         サンプル deck.yaml
+urushi.components/ ユーザーアニメーション部品の例
+```
+
+## 必要なもの
+
+- Node.js 20以上（22推奨）
+- Chromium 系ブラウザ（Playwright 実測用。通常はインストール済みの Chrome を自動検出）
+- GCP プロジェクトと ADC（実 AI を使う場合）
+
+ADC の設定:
+
+```sh
+gcloud auth application-default login
+gcloud config set project <PROJECT_ID>
+```
+
+Vertex AI API が無効な場合は、オーナー権限のある人が有効化してください（このリポジトリのコードは GCP 設定を変更しません）。
+
+```sh
+gcloud services enable aiplatform.googleapis.com
+```
+
+Claude on Vertex AI を使う場合は、さらに Model Garden で対象モデルの有効化と、リージョン/グローバル online prediction quota の確保が必要です。Gemini 3.x 系は `global` / `us` / `eu` など、モデルが提供されているロケーションを選んでください。
 
 ## セットアップ
-
-Node.js 20以上が必要です。
 
 ```sh
 npm install
 cp .env.example .env
 ```
 
-`.env` にAnthropic APIキーを設定します。
+`.env` の例:
 
 ```sh
-ANTHROPIC_API_KEY=sk-ant-...
+GOOGLE_CLOUD_PROJECT=your-gcp-project-id
+GOOGLE_CLOUD_LOCATION=global
+URUSHI_PROVIDER=vertex-gemini
+URUSHI_MODEL=gemini-3.8-flash
+PORT=3333
 ```
 
-APIキーがなくても起動できます。その場合はLLMを呼ばず、[`examples/sample.html`](examples/sample.html) を返すモックモードになります。
+秘密情報やトークンはコミットしないでください。`.env` は `.gitignore` 済みです。
+
+### Provider
+
+| Provider | 実装 | 既定モデル |
+| --- | --- | --- |
+| `vertex-gemini` | `@google/genai` の Vertex AI mode | `gemini-3.8-flash` |
+| `vertex-claude` | `@anthropic-ai/vertex-sdk` | `claude-sonnet-5-5` |
+| `mock` | 外部APIを呼ばない決定的モック | `mock` |
+
+`URUSHI_PROVIDER`、CLI の `--provider`、Web UI の選択で切り替えられます。
+
+## CLI
+
+```sh
+npm run build
+
+# 概要から生成し、check + スクショ + AI修正ループまで実行
+node dist/cli.js generate "営業支援AIの導入企画を5枚で" --out out/demo
+
+# モックで全工程を確認
+node dist/cli.js generate "営業支援AIの導入企画を5枚で" --provider mock --out out/mock
+
+# YAMLから1ファイルHTMLを構築
+node dist/cli.js build examples/planning-proposal.yaml --out out/planning
+
+# Playwright実測。構造化エラーJSONを返す
+node dist/cli.js check examples/planning-proposal.yaml --out out/planning --json
+
+# 既存YAMLをAI修正。モックでも確認できる
+node dist/cli.js fix examples/overflow.yaml --provider mock --out out/fixed
+
+# PDF / PPTX
+node dist/cli.js export examples/planning-proposal.yaml --out out/planning --pdf --pptx
+
+# JSON Schema を生成
+node dist/cli.js schema --out schema/deck.schema.json
+```
+
+`check` のエラーは次の形です。
+
+```json
+{
+  "slide": 1,
+  "path": "left.points[0]",
+  "rule": "text-overflow",
+  "measured": 296,
+  "limit": 0,
+  "unit": "px-overflow",
+  "hint": "文字を40〜60%に縮めるか、項目を分割してください"
+}
+```
 
 ## Web UI
 
@@ -39,102 +132,85 @@ APIキーがなくても起動できます。その場合はLLMを呼ばず、[`
 npm run dev
 ```
 
-起動後、<http://localhost:3333> を開きます。ポートは `.env` または環境変数 `PORT` で変更できます。
+<http://localhost:3333> を開きます。
 
-1. 左側のテキストエリアに作りたいスライドの概要を入力
-2. 「スライドを生成」を押す
-3. 右側のプレビューで確認
-4. 「HTMLをダウンロード」で1ファイルHTMLを保存
+- 概要入力
+- Provider 選択
+- 生成・自己修正ループの進行表示
+- デッキプレビュー
+- 検証エラー一覧
+- `deck.yaml` の直接編集と再ビルド
+- PDF / PPTX ダウンロード
 
-サンプルだけを確認したい場合は「サンプルで確認」をオンにするか、[`examples/sample.html`](examples/sample.html) を直接開いてください。
+## MCP server
 
-## 一時公開（GitHub Pages / BYOK）
+```sh
+node dist/cli.js mcp
+```
 
-PR #1 のレビュー用に、静的版を一時公開しています。
+stdio MCP サーバーとして、同じ中核を包んだ `generate` / `render` / `check` / `export` ツールを提供します。クライアント設定例:
 
-<https://yuto90.github.io/urushi/>
+```json
+{
+  "mcpServers": {
+    "urushi": {
+      "command": "node",
+      "args": ["/path/to/urushi/dist/cli.js", "mcp"]
+    }
+  }
+}
+```
 
-この公開版は静的ホスティングのためNodeサーバーは使いません。閲覧者が自分のAnthropic APIキーを入力すると、ブラウザからAnthropic API（`api.anthropic.com`）へ直接リクエストします（BYOK）。GitHub Pagesや第三者サーバーにキーは送信されません。キーは通常sessionStorageのみに保持され、「この端末に保存する」をチェックした場合だけlocalStorageに保存されます。APIキーなしでも「サンプルを表示」でデモデッキを確認できます。
+## deck.yaml の型
 
-Pages用の静的ファイルは次で `dist-pages/` にビルドできます。
+5つの意味型に加えて、逃げ道として `custom` があります。
+
+- `conclusion`: 結論
+- `comparison`: 比較
+- `causal`: 因果
+- `process`: 手順
+- `list`: 一覧
+- `custom`: 自由HTML（トークン逸脱は警告）
+
+例は [`examples/planning-proposal.yaml`](examples/planning-proposal.yaml) を参照してください。JSON Schema は `npm run schema` で再生成できます。
+
+## アニメーション部品
+
+AI は `animation: <name>` でカタログ内の部品を選ぶだけです。標準部品:
+
+- `assemble`
+- `bar-grow`
+- `count-up`
+- `step-in`
+- `morph-compare`
+- `balance`
+- `data-flow`
+
+各部品は名前・パラメータ・所要時間・発火条件・PDF用の静止状態を持ちます。PDF/静止モードでは最終状態で描画します。
+
+`urushi.components/*.mjs` に同じ契約の部品を置くとカタログへ追加できます。例: [`urushi.components/fade-rise.mjs`](urushi.components/fade-rise.mjs)。
+
+## GitHub Pages（一時公開）
+
+Pages は生成済みサンプル3本の静的ギャラリーです。ブラウザから Vertex AI を呼ぶ機能はありません。
 
 ```sh
 npm run build:pages
 ```
 
-## CLI
-
-```sh
-npm run cli -- "新しいSaaS導入提案を経営層向けに5枚で"
-```
-
-またはビルド済みファイルを直接実行します。
-
-```sh
-node dist/cli.js "新しいSaaS導入提案を経営層向けに5枚で"
-```
-
-生成物は `out/<timestamp>.html` に書き出されます。LLMを呼ばずサンプルを出す場合は次のようにします。
-
-```sh
-node dist/cli.js --sample "動作確認"
-```
-
-このリポジトリをnpmパッケージとしてインストールした環境では、`npx urushi "概要"` でも実行できます。
-
-## 環境変数
-
-| 変数 | 既定値 | 説明 |
-| --- | --- | --- |
-| `ANTHROPIC_API_KEY` | なし | Anthropic APIキー。未設定時はサンプルモック |
-| `URUSHI_MODEL` | `claude-sonnet-5-5` | Messages APIで使うモデル |
-| `PORT` | `3333` | Web UIのポート |
-
-`.env` は `.gitignore` 済みです。実際のキーはコミットしないでください。
-
-## 出力HTMLの方針
-
-生成HTMLは次の条件をsystem promptで強制しています。
-
-- CSS/JSをインラインした1ファイル完結
-- 1920x1080の16:9キャンバスを画面にフィットさせてスケール
-- ← / → / Space / PageUp / PageDownでページ送り、ページ番号表示
-- 要素の順次出現、バーアニメーション、カウントアップなど読みやすさ優先のアニメーション
-- 色・書体・余白などをCSSカスタムプロパティのデザイントークンに集約
-- `@media print` による1スライド1ページ印刷
-
-LLMの応答からHTML部分だけを抽出する簡単な後処理（コードフェンス除去など）を入れています。
-
-## ファイル構成
-
-```text
-src/
-  anthropic.ts    Anthropic Messages API呼び出し
-  cli.ts          CLIエントリーポイント
-  config.ts       .envと環境変数の読み込み
-  generate.ts     生成処理のオーケストレーション
-  postprocess.ts  LLM応答からHTMLを抽出
-  prompt.ts       system prompt / user prompt
-  server.ts       ローカルWebサーバー
-public/           ローカルWeb UI
-pages/            GitHub Pages用の静的HTML/CSS
-scripts/          Pagesビルドスクリプト
-examples/sample.html  モック兼デモ用の手書きサンプルデッキ
-```
+`dist-pages/` が出力されます。公開内容はダミーのサンプルデッキだけにしてください。実案件の情報を含むデッキは公開しないでください。
 
 ## 検証
 
 ```sh
 npm run typecheck
 npm run build
-npm run cli -- --sample "動作確認"
+npm run schema
+node dist/cli.js check examples/planning-proposal.yaml --out out/check-ok --json
+node dist/cli.js check examples/overflow.yaml --out out/check-ng --json
+node dist/cli.js fix examples/overflow.yaml --provider mock --out out/fix-mock
+node dist/cli.js export examples/planning-proposal.yaml --out out/export --pdf --pptx
 npm run build:pages
 ```
 
-## 未対応・今後の余地
-
-- 意味スキーマ（結論・比較・因果・手順・一覧など）の構造化入力
-- レイアウトの機械可読な検証、スクリーンショットによる自己修正ループ
-- PDF / PPTX書き出し
-- 生成履歴、再編集、部分修正
-- 認証・複数ユーザー対応
+CI は typecheck と build を実行します。Playwright が必要な実測検証はローカルの Chromium で行います。

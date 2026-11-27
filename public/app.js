@@ -33,7 +33,8 @@ function renderIterations(iterations) {
     const label = document.createElement('strong');
     label.textContent = `iteration ${iteration.iteration}`;
     const detail = document.createElement('span');
-    detail.textContent = iteration.validSchema ? `${iteration.errors.length} errors / ${iteration.screenshots} shots` : 'schema error';
+    const errorCount = typeof iteration.errors === 'number' ? iteration.errors : iteration.errors?.length ?? 0;
+    detail.textContent = iteration.validSchema ? `${errorCount} errors / ${iteration.screenshots} shots` : 'schema error';
     item.append(label, detail);
     iterationsBox.append(item);
   }
