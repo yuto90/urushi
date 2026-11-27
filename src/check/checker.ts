@@ -9,6 +9,7 @@ interface BrowserCheckPayload {
   overflow: CheckError[];
   overlap: CheckError[];
   contrast: CheckError[];
+  volume: CheckError[];
 }
 
 async function openDeckPage(htmlPath: string): Promise<{ page: Page; close: () => Promise<void> }> {
@@ -36,7 +37,7 @@ async function gotoSlide(page: Page, index: number): Promise<void> {
 async function measureSlide(page: Page, slideNumber: number): Promise<CheckError[]> {
   const payload = await page.evaluate((slide): BrowserCheckPayload => {
     const active = document.querySelector('.slide.active') as HTMLElement | null;
-    const empty: BrowserCheckPayload = { overflow: [], overlap: [], contrast: [] };
+    const empty: BrowserCheckPayload = { overflow: [], overlap: [], contrast: [], volume: [] };
     if (!active) return empty;
 
     const pathOf = (el: Element) => el.getAttribute('data-check-path') || el.tagName.toLowerCase();
@@ -65,6 +66,21 @@ async function measureSlide(page: Page, slideNumber: number): Promise<CheckError
           limit: 8,
           unit: 'px',
           hint: '文字を40〜60%に縮めるか、項目を分割してください',
+        });
+      }
+    }
+
+    for (const el of textElements) {
+      const maxChars = Number(el.getAttribute('data-max-chars') || '0');
+      const length = (el.textContent || '').trim().length;
+      if (maxChars > 0 && length > maxChars) {
+        push(empty.volume, {
+          path: pathOf(el),
+          rule: 'text-volume',
+          measured: length,
+          limit: maxChars,
+          unit: 'chars',
+          hint: '表示用の文字量を超えています。文言を短くするか項目を分けてください',
         });
       }
     }
@@ -163,7 +179,7 @@ async function measureSlide(page: Page, slideNumber: number): Promise<CheckError
     return empty;
   }, slideNumber);
 
-  return [...payload.overflow, ...payload.overlap, ...payload.contrast];
+  return [...payload.overflow, ...payload.overlap, ...payload.volume, ...payload.contrast];
 }
 
 export async function captureSlideScreenshots(htmlPath: string, outputDir: string): Promise<string[]> {

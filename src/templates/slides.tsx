@@ -17,6 +17,14 @@ const typeLabels: Record<Slide['type'], string> = {
   custom: '自由HTML',
 };
 
+function textCheck(path: string, maxChars: number) {
+  return {
+    'data-check-text': true,
+    'data-check-path': path,
+    'data-max-chars': maxChars,
+  };
+}
+
 function animationAttributes(slide: Slide, fallback: string) {
   return {
     'data-anim': slide.animation ?? fallback,
@@ -31,7 +39,7 @@ function SlideHeader(props: { slide: Slide; index: number; title?: string }) {
       <div>
         <div class="eyebrow">{typeLabels[props.slide.type]}</div>
         {title ? (
-          <h1 class="slide-title" data-check-text data-check-path="title">
+          <h1 class="slide-title" {...textCheck('title', 34)}>
             {title}
           </h1>
         ) : null}
@@ -47,20 +55,20 @@ function ConclusionTemplate(props: { slide: ConclusionSlide; index: number }) {
     <div class="slide-inner">
       <SlideHeader slide={slide} index={props.index} />
       <div class="slide-body conclusion-layout" {...animationAttributes(slide, 'assemble')}>
-        <p class="conclusion-statement u-part" data-part data-check-text data-check-path="conclusion">
+        <p class="conclusion-statement u-part" data-part {...textCheck('conclusion', 90)}>
           {slide.conclusion}
         </p>
         {slide.evidence?.length ? (
           <div class="conclusion-evidence">
             {slide.evidence.map((item, index) => (
-              <div class="evidence-chip u-part" data-part data-check-text data-check-path={`evidence[${index}]`}>
+              <div class="evidence-chip u-part" data-part {...textCheck(`evidence[${index}]`, 40)}>
                 {item}
               </div>
             ))}
           </div>
         ) : null}
         {slide.callToAction ? (
-          <div class="call-to-action u-part" data-part data-check-text data-check-path="callToAction">
+          <div class="call-to-action u-part" data-part {...textCheck('callToAction', 34)}>
             {slide.callToAction}
           </div>
         ) : null}
@@ -74,7 +82,7 @@ function ScoreBlock(props: { score?: number; path: string }) {
   const score = Math.round(props.score);
   return (
     <div class="score-block">
-      <span class="score-number u-count" data-value={score} data-check-text data-check-path={`${props.path}.score`}>
+      <span class="score-number u-count" data-value={score} {...textCheck(`${props.path}.score`, 8)}>
         {score}
       </span>
       <span class="score-label">/ 100</span>
@@ -89,18 +97,18 @@ function ComparisonTemplate(props: { slide: ComparisonSlide; index: number }) {
   const { slide } = props;
   const renderSide = (side: ComparisonSlide['left'], key: 'left' | 'right') => (
     <section class={`comparison-panel u-card ${key}`} data-compare-side={key}>
-      <h2 class="comparison-label" data-check-text data-check-path={`${key}.label`}>
+      <h2 class="comparison-label" {...textCheck(`${key}.label`, 20)}>
         {side.label}
       </h2>
       {side.summary ? (
-        <p class="comparison-summary" data-check-text data-check-path={`${key}.summary`}>
+        <p class="comparison-summary" {...textCheck(`${key}.summary`, 48)}>
           {side.summary}
         </p>
       ) : null}
       <ScoreBlock score={side.score} path={key} />
       <ul class="comparison-points">
         {side.points.map((point, index) => (
-          <li data-part data-check-text data-check-path={`${key}.points[${index}]`}>
+          <li data-part {...textCheck(`${key}.points[${index}]`, 38)}>
             {point}
           </li>
         ))}
@@ -117,7 +125,7 @@ function ComparisonTemplate(props: { slide: ComparisonSlide; index: number }) {
           {renderSide(slide.right, 'right')}
         </div>
         {slide.verdict ? (
-          <div class="verdict-strip" data-check-text data-check-path="verdict">
+          <div class="verdict-strip" {...textCheck('verdict', 58)}>
             {slide.verdict}
           </div>
         ) : null}
@@ -135,14 +143,14 @@ function CausalTemplate(props: { slide: CausalSlide; index: number }) {
         <div class="causal-flow">
           <section class="causal-box u-card u-flow-node">
             <div class="causal-label">CAUSE</div>
-            <p class="causal-text" data-check-text data-check-path="cause">
+            <p class="causal-text" {...textCheck('cause', 48)}>
               {slide.cause}
             </p>
           </section>
           <div class="causal-mechanism">
             <div class="causal-arrow u-flow-arrow">→</div>
             {slide.mechanism.map((item, index) => (
-              <div class="mechanism-item u-flow-node" data-check-text data-check-path={`mechanism[${index}]`}>
+              <div class="mechanism-item u-flow-node" {...textCheck(`mechanism[${index}]`, 32)}>
                 {item}
               </div>
             ))}
@@ -150,13 +158,13 @@ function CausalTemplate(props: { slide: CausalSlide; index: number }) {
           </div>
           <section class="causal-box u-card u-flow-node">
             <div class="causal-label">EFFECT</div>
-            <p class="causal-text" data-check-text data-check-path="effect">
+            <p class="causal-text" {...textCheck('effect', 48)}>
               {slide.effect}
             </p>
           </section>
         </div>
         {slide.implication ? (
-          <div class="implication-strip" data-check-text data-check-path="implication">
+          <div class="implication-strip" {...textCheck('implication', 58)}>
             {slide.implication}
           </div>
         ) : null}
@@ -175,11 +183,11 @@ function ProcessTemplate(props: { slide: ProcessSlide; index: number }) {
           {slide.steps.map((step, index) => (
             <section class="process-step u-step u-card">
               <div class="step-index">{index + 1}</div>
-              <h2 class="step-title" data-check-text data-check-path={`steps[${index}].title`}>
+              <h2 class="step-title" {...textCheck(`steps[${index}].title`, 22)}>
                 {step.title}
               </h2>
               {step.description ? (
-                <p class="step-description" data-check-text data-check-path={`steps[${index}].description`}>
+                <p class="step-description" {...textCheck(`steps[${index}].description`, 42)}>
                   {step.description}
                 </p>
               ) : null}
@@ -187,7 +195,7 @@ function ProcessTemplate(props: { slide: ProcessSlide; index: number }) {
           ))}
         </div>
         {slide.outcome ? (
-          <div class="outcome-strip" data-check-text data-check-path="outcome">
+          <div class="outcome-strip" {...textCheck('outcome', 58)}>
             {slide.outcome}
           </div>
         ) : null}
@@ -205,11 +213,11 @@ function ListTemplate(props: { slide: ListSlide; index: number }) {
         <div class={`list-grid count-${slide.items.length}`}>
           {slide.items.map((item, index) => (
             <section class="list-item u-card u-part" data-part>
-              <h2 class="list-item-title" data-check-text data-check-path={`items[${index}].title`}>
+              <h2 class="list-item-title" {...textCheck(`items[${index}].title`, 24)}>
                 {item.title}
               </h2>
               {item.description ? (
-                <p class="list-item-description" data-check-text data-check-path={`items[${index}].description`}>
+                <p class="list-item-description" {...textCheck(`items[${index}].description`, 48)}>
                   {item.description}
                 </p>
               ) : null}
@@ -217,7 +225,7 @@ function ListTemplate(props: { slide: ListSlide; index: number }) {
           ))}
         </div>
         {slide.takeaway ? (
-          <div class="takeaway-strip" data-check-text data-check-path="takeaway">
+          <div class="takeaway-strip" {...textCheck('takeaway', 58)}>
             {slide.takeaway}
           </div>
         ) : null}

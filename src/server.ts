@@ -5,7 +5,7 @@ import { extname, join, normalize, resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import type { ProviderName } from './config.js';
 import { createAiProvider, generateWithFixLoop, type GenerationResult, type LoopIteration } from './ai/index.js';
-import { buildAndCheck, readDeckFile } from './pipeline.js';
+import { buildAndCheck, DeckValidationError, readDeckFile } from './pipeline.js';
 import { exportDeck } from './export/index.js';
 
 interface Job {
@@ -209,18 +209,26 @@ export async function startServer(port = 3333): Promise<void> {
           }
           const deckPath = join(job.outDir, 'deck.yaml');
           await writeFile(deckPath, body.yaml, 'utf8');
-          const rebuilt = await buildAndCheck(deckPath, job.outDir);
-          job.result = {
-            provider: job.result?.provider ?? 'manual',
-            model: job.result?.model ?? 'yaml-edit',
-            outDir: job.outDir,
-            deckPath,
-            htmlPath: rebuilt.build.htmlPath,
-            ok: rebuilt.check.ok,
-            iterations: job.result?.iterations ?? [],
-            finalErrors: rebuilt.check.errors,
-          };
-          sendJson(response, 200, { ok: rebuilt.check.ok, errors: rebuilt.check.errors, warnings: rebuilt.build.warnings });
+          try {
+            const rebuilt = await buildAndCheck(deckPath, job.outDir);
+            job.result = {
+              provider: job.result?.provider ?? 'manual',
+              model: job.result?.model ?? 'yaml-edit',
+              outDir: job.outDir,
+              deckPath,
+              htmlPath: rebuilt.build.htmlPath,
+              ok: rebuilt.check.ok,
+              iterations: job.result?.iterations ?? [],
+              finalErrors: rebuilt.check.errors,
+            };
+            sendJson(response, 200, { ok: rebuilt.check.ok, errors: rebuilt.check.errors, warnings: rebuilt.build.warnings });
+          } catch (error) {
+            if (error instanceof DeckValidationError) {
+              sendJson(response, 422, { ok: false, errors: error.errors, warnings: [] });
+            } else {
+              throw error;
+            }
+          }
           return;
         }
       }
