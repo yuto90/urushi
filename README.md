@@ -148,7 +148,7 @@ npm run dev
 node dist/cli.js mcp
 ```
 
-stdio MCP サーバーとして、同じ中核を包んだ `generate` / `render` / `check` / `export` ツールを提供します。クライアント設定例:
+stdio MCP サーバーとして、同じ中核を包んだ `generate` / `render` / `check` / `export` ツールを提供します。`render` / `check` / `export` はファイルパスに加えて、同じ Zod 定義から入力スキーマを作る `deck` オブジェクトも受け付けます。クライアント設定例:
 
 ```json
 {
