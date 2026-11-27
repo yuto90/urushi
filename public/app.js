@@ -162,11 +162,11 @@ async function rebuild() {
       body: JSON.stringify({ yaml: yamlEditor.value }),
     });
     const body = await response.json();
-    if (!response.ok) throw new Error(body.error || `HTTP ${response.status}`);
+    if (!response.ok && !body.errors) throw new Error(body.error || `HTTP ${response.status}`);
     renderErrors(body.errors || []);
     for (const warning of body.warnings || []) console.warn(warning);
     setStatus(body.ok ? 'YAMLの再ビルドが完了しました。' : '再ビルド後も検証エラーがあります。', body.ok ? 'ok' : 'error');
-    refreshPreview();
+    if (response.ok) refreshPreview();
   } catch (error) {
     setStatus(error instanceof Error ? error.message : String(error), 'error');
   } finally {
