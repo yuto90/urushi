@@ -120,8 +120,8 @@ node dist/cli.js schema --out schema/deck.schema.json
   "path": "left.points[0]",
   "rule": "text-overflow",
   "measured": 296,
-  "limit": 0,
-  "unit": "px-overflow",
+  "limit": 8,
+  "unit": "px",
   "hint": "文字を40〜60%に縮めるか、項目を分割してください"
 }
 ```

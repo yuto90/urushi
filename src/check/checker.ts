@@ -62,8 +62,8 @@ async function measureSlide(page: Page, slideNumber: number): Promise<CheckError
           path: pathOf(el),
           rule: 'text-overflow',
           measured,
-          limit: 0,
-          unit: 'px-overflow',
+          limit: 8,
+          unit: 'px',
           hint: '文字を40〜60%に縮めるか、項目を分割してください',
         });
       }
