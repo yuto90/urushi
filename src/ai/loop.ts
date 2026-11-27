@@ -118,7 +118,7 @@ export async function generateWithFixLoop(options: {
   }
 
   const deckPath = join(outDir, 'deck.yaml');
-  if (!iterations.at(-1)?.validSchema) await writeFile(deckPath, yaml, 'utf8');
+  await writeFile(deckPath, yaml, 'utf8');
   return {
     provider: provider.name,
     model: provider.model,
