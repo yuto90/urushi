@@ -1,0 +1,72 @@
+version: 1
+meta:
+  title: 営業支援AIの導入企画
+  subtitle: 企画書要旨から作った叩き台
+  author: Urushi sample
+slides:
+  - type: conclusion
+    title: 結論
+    conclusion: 営業支援AIを試験導入し、提案作成時間を3か月で半分にする
+    evidence:
+      - 提案書作成に月120時間を使用
+      - 既存ナレッジの再利用が進んでいない
+      - 小規模導入で効果検証が可能
+    callToAction: 来月から5チームで試験開始
+    animation: assemble
+    notes: 最初に意思決定してほしい内容を短く伝える。
+  - type: comparison
+    title: 現行運用とAI支援運用の比較
+    left:
+      label: 現行運用
+      summary: 担当者が資料と事例を手作業で集める
+      points:
+        - 情報収集に半日以上かかる
+        - 品質が担当者の経験に依存する
+        - 過去資料の再利用が少ない
+      score: 42
+    right:
+      label: AI支援運用
+      summary: 要件から社内事例と構成案を提示する
+      points:
+        - 初稿作成を30分以内に短縮
+        - 推奨根拠を一覧で確認できる
+        - 利用履歴から精度を改善できる
+      score: 78
+    verdict: 初稿作成はAIに寄せ、最終判断は営業担当が持つ
+    animation: balance
+  - type: causal
+    title: 効果が生まれる因果
+    cause: 提案作成の大半を情報収集が占有している
+    mechanism:
+      - 社内資料を横断検索
+      - 顧客要件に合う事例を抽出
+      - 構成と根拠を下書き
+    effect: 担当者は顧客理解と表現の改善に時間を使える
+    implication: 粗利よりも提案速度と勝率の改善を先に測る
+    animation: data-flow
+  - type: process
+    title: 導入手順
+    steps:
+      - title: 対象選定
+        description: 提案工数の大きい5チームを選ぶ
+      - title: 資料接続
+        description: 過去提案と事例集を索引化する
+      - title: 試験運用
+        description: 4週間利用し作成時間を記録
+      - title: 評価拡大
+        description: 効果と安全性を見て展開範囲を決める
+    outcome: 3か月後に全社展開の可否を判断する
+    animation: step-in
+  - type: list
+    title: 成功の条件
+    items:
+      - title: 測定
+        description: 作成時間と採用率を週次で記録する
+      - title: 品質
+        description: 提案の最終確認は担当者が行う
+      - title: 安全
+        description: 顧客秘匿情報の入力範囲を限定する
+      - title: 学習
+        description: 使われなかった提案理由を蓄積する
+    takeaway: 小さく測りながら、現場の納得感を作る
+    animation: assemble

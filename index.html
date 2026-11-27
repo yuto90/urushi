@@ -1,77 +1,63 @@
 <!doctype html>
 <html lang="ja">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Urushi Pages - BYOK Slide Generator</title>
-  <link rel="stylesheet" href="./styles.css">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Urushi sample gallery</title>
+<style>
+:root{color-scheme:dark;--bg:#101319;--panel:#202735;--text:#f5f1e8;--muted:#aeb7c7;--line:rgba(245,241,232,.14);--accent:#d6a84f;font-family:"Hiragino Sans","Yu Gothic","Noto Sans JP",system-ui,sans-serif}*{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at 80% 0%,rgba(214,168,79,.14),transparent 34rem),var(--bg);color:var(--text)}main{max-width:1180px;margin:0 auto;padding:54px 24px 70px}.eyebrow{color:#f0c568;font-size:12px;font-weight:800;letter-spacing:.14em;text-transform:uppercase}h1{font-size:52px;letter-spacing:-.05em;margin:6px 0 10px}.lead{color:var(--muted);font-size:18px;line-height:1.7;max-width:780px}.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:22px;margin-top:38px}.card{overflow:hidden;border:1px solid var(--line);border-radius:24px;background:rgba(32,39,53,.88);box-shadow:0 24px 70px rgba(0,0,0,.3)}.thumb{display:block;aspect-ratio:16/9;background:#070a0f}.thumb img{width:100%;height:100%;object-fit:cover;display:block}.fallback{height:100%;display:grid;place-items:center;color:var(--muted)}.card-body{padding:18px}h2{font-size:20px;margin:0 0 8px}p{color:var(--muted);line-height:1.6;margin:0}.links{display:flex;gap:10px;margin-top:16px}.links a{color:#171006;background:var(--accent);border-radius:999px;padding:8px 12px;font-size:13px;font-weight:800;text-decoration:none}.links a+a{color:var(--text);background:rgba(255,255,255,.08);border:1px solid var(--line)}footer{margin-top:34px;color:var(--muted);font-size:13px}@media(max-width:900px){.grid{grid-template-columns:1fr}h1{font-size:40px}}
+</style>
 </head>
 <body>
-  <header class="app-header">
-    <div>
-      <p class="eyebrow">Temporary GitHub Pages Demo / BYOK</p>
-      <h1>Urushi</h1>
+<main>
+  <div class="eyebrow">Urushi sample gallery</div>
+  <h1>AI生成スライドの叩き台</h1>
+  <p class="lead">Urushi のスキーマ駆動パイプラインで生成した静的サンプルです。ブラウザから Vertex AI を呼ぶ必要はなく、生成済みの1ファイルHTMLデッキを閲覧できます。</p>
+  <section class="grid">
+
+  <article class="card">
+    <a class="thumb" href="decks/planning-proposal/" aria-label="営業支援AIの導入企画 を開く">
+      <img src="assets/planning-proposal-slide-01.png" alt="営業支援AIの導入企画 の1枚目">
+    </a>
+    <div class="card-body">
+      <h2>営業支援AIの導入企画</h2>
+      <p>企画書の要旨を題材にした5枚構成</p>
+      <div class="links">
+        <a href="decks/planning-proposal/">デッキを開く</a>
+        <a href="decks/planning-proposal/deck.yaml">deck.yaml</a>
+      </div>
     </div>
-    <nav class="header-actions" aria-label="補助リンク">
-      <button id="show-sample" class="link-button" type="button">サンプルを表示</button>
-      <a href="https://github.com/yuto90/urushi/pull/1" target="_blank" rel="noreferrer">PR #1</a>
-    </nav>
-  </header>
+  </article>
 
-  <main class="workspace">
-    <section class="input-panel" aria-labelledby="input-title">
-      <div class="panel-heading">
-        <p class="eyebrow">Anthropic API Key</p>
-        <h2>自分のキーで生成（BYOK）</h2>
+  <article class="card">
+    <a class="thumb" href="decks/product-review/" aria-label="モバイルアプリ改善レビュー を開く">
+      <img src="assets/product-review-slide-01.png" alt="モバイルアプリ改善レビュー の1枚目">
+    </a>
+    <div class="card-body">
+      <h2>モバイルアプリ改善レビュー</h2>
+      <p>比較と手順を中心にした3枚構成</p>
+      <div class="links">
+        <a href="decks/product-review/">デッキを開く</a>
+        <a href="decks/product-review/deck.yaml">deck.yaml</a>
       </div>
+    </div>
+  </article>
 
-      <label class="field-label" for="api-key">Anthropic APIキー</label>
-      <div class="key-row">
-        <input id="api-key" type="password" autocomplete="off" placeholder="sk-ant-...">
-        <button id="clear-key" type="button">削除</button>
+  <article class="card">
+    <a class="thumb" href="decks/custom-and-flow/" aria-label="データ基盤の流れ を開く">
+      <img src="assets/custom-and-flow-slide-01.png" alt="データ基盤の流れ の1枚目">
+    </a>
+    <div class="card-body">
+      <h2>データ基盤の流れ</h2>
+      <p>自由HTMLの逃げ道を含む3枚構成</p>
+      <div class="links">
+        <a href="decks/custom-and-flow/">デッキを開く</a>
+        <a href="decks/custom-and-flow/deck.yaml">deck.yaml</a>
       </div>
-      <label class="save-toggle">
-        <input type="checkbox" id="save-key">
-        この端末に保存する（localStorage）
-      </label>
-      <p class="security-note">キーはブラウザからAnthropic API（api.anthropic.com）へ直接送信されます。GitHub Pagesや第三者サーバーには送信されません。通常はsessionStorageだけに保持され、チェック時のみlocalStorageに保存されます。</p>
-
-      <label class="field-label" for="model">モデル</label>
-      <input id="model" type="text" spellcheck="false">
-
-      <div class="panel-heading brief-heading">
-        <p class="eyebrow">Brief</p>
-        <h2 id="input-title">作りたいスライドの概要</h2>
-      </div>
-      <textarea id="prompt" spellcheck="false">新しい社内業務改善SaaSの導入提案。現状の課題、解決策、導入効果、3か月の導入ロードマップ、次の意思決定を5枚で説明してほしい。経営層向けに簡潔で信頼感のあるデザイン。</textarea>
-      <div class="input-meta">
-        <span id="character-count">0 文字</span>
-      </div>
-      <button id="generate" class="primary-button" type="button">APIキーで生成</button>
-      <div id="status" class="status" role="status" aria-live="polite">APIキーを入力するか、サンプルを表示してください。</div>
-    </section>
-
-    <section class="preview-panel" aria-labelledby="preview-title">
-      <div class="preview-toolbar">
-        <div>
-          <p class="eyebrow">Preview</p>
-          <h2 id="preview-title">生成結果</h2>
-        </div>
-        <div class="preview-actions">
-          <button id="download" type="button" disabled>HTMLをダウンロード</button>
-          <button id="open-tab" type="button" disabled>別タブで開く</button>
-        </div>
-      </div>
-      <div class="preview-frame-wrap">
-        <iframe id="preview" title="生成されたスライドのプレビュー" sandbox="allow-scripts"></iframe>
-        <div id="empty-state" class="empty-state">
-          <strong>まだ生成されていません</strong>
-          <span>サンプル表示ならAPIキーなしで確認できます。</span>
-        </div>
-      </div>
-    </section>
-  </main>
-
-  <script src="./assets/pages/app.js" type="module"></script>
+    </div>
+  </article>
+  </section>
+  <footer>このページはレビュー用の一時公開です。サンプル内容はダミーデータです。</footer>
+</main>
 </body>
 </html>
