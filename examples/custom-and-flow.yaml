@@ -1,0 +1,37 @@
+version: 1
+meta:
+  title: データ基盤の流れ
+  subtitle: 自由HTMLの逃げ道を含むサンプル
+slides:
+  - type: causal
+    title: データ品質が効く因果
+    cause: 入力項目の意味が部門ごとにずれている
+    mechanism:
+      - 名寄せルールが揺れる
+      - 集計定義が分かれる
+      - レポート解釈に時間がかかる
+    effect: 経営判断までのリードタイムが伸びる
+    implication: まず指標定義を1か所に集約する
+    animation: data-flow
+  - type: custom
+    title: 移行の全体像
+    html: |
+      <div class="u-card" style="padding: var(--urushi-space-4); height: 620px; display: grid; grid-template-columns: 1fr 1fr 1fr; gap: var(--urushi-space-3); align-items: center; text-align: center;">
+        <div data-part><h2 style="font-size: 34px; margin: 0;">業務システム</h2><p class="u-muted" style="font-size: 24px;">販売・会計・CS</p></div>
+        <div data-part><h2 style="font-size: 34px; margin: 0;">統合基盤</h2><p class="u-muted" style="font-size: 24px;">定義・名寄せ・権限</p></div>
+        <div data-part><h2 style="font-size: 34px; margin: 0;">意思決定</h2><p class="u-muted" style="font-size: 24px;">週次レビュー</p></div>
+      </div>
+    animation: fade-rise
+  - type: list
+    title: 最初に揃えるもの
+    items:
+      - title: 指標辞典
+        description: 売上と粗利の定義を固定する
+      - title: 所有者
+        description: 各指標に責任者を割り当てる
+      - title: 検査
+        description: 更新時に件数と欠損を確認する
+      - title: 公開範囲
+        description: 権限の既定値を最小化する
+    takeaway: 統合技術より先に運用ルールを決める
+    animation: assemble

@@ -1,0 +1,24 @@
+version: 1
+meta:
+  title: はみ出し検証用デッキ
+slides:
+  - type: comparison
+    title: 検証用の比較
+    left:
+      label: 長い案
+      points:
+        - ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789
+    right:
+      label: 短い案
+      points:
+        - 短い文章
+    verdict: 左の文章が長すぎます
+    animation: balance
+  - type: list
+    title: 検証用一覧
+    items:
+      - title: 通常項目
+        description: 問題ない説明
+      - title: 長い項目
+        description: ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnop
+    animation: assemble

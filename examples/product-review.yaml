@@ -1,0 +1,45 @@
+version: 1
+meta:
+  title: モバイルアプリ改善レビュー
+  subtitle: 定例報告向けサンプル
+slides:
+  - type: conclusion
+    title: 今週の結論
+    conclusion: 初回チュートリアル改善により、翌日継続率が7ポイント向上した
+    evidence:
+      - 計測期間は2週間
+      - 新規利用者の離脱が減少
+      - 問い合わせ件数は横ばい
+    callToAction: 次は通知許諾導線を改善する
+    animation: count-up
+  - type: comparison
+    title: 改善前後の比較
+    left:
+      label: 改善前
+      summary: 機能説明を5画面連続で表示
+      points:
+        - 完了率は58パーセント
+        - 途中離脱は3画面目に集中
+        - 操作目的が伝わりにくい
+      score: 58
+    right:
+      label: 改善後
+      summary: 最初の成功体験までを2画面に短縮
+      points:
+        - 完了率は81パーセント
+        - 離脱ポイントが分散
+        - 利用目的に応じた導線を提示
+      score: 81
+    verdict: 説明量よりも初期成功体験を優先する
+    animation: morph-compare
+  - type: process
+    title: 次の改善手順
+    steps:
+      - title: 現状分解
+        description: 通知許諾までの操作を分解する
+      - title: 仮説作成
+        description: 許諾しない理由を分類する
+      - title: AB検証
+        description: 文面と提示タイミングを比較する
+    outcome: 2週間後に通知経由の再訪率を見る
+    animation: step-in
