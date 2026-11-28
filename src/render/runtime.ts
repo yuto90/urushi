@@ -138,7 +138,7 @@ export const deckRuntimeJs = `
     });
     chartPlayer(previous, current, !staticMode && (!options || options.animate !== false));
     updateFooter();
-    if (window.parent !== window) window.parent.postMessage({ type: 'urushi:slide', index: current }, '*');
+    if (window.parent !== window && (!options || options.notify !== false)) window.parent.postMessage({ type: 'urushi:slide', index: current }, '*');
     if (!options || options.animate !== false) playSlide(slides[current]);
     if (!options || options.hash !== false) {
       try { history.replaceState(null, '', '#/' + (current + 1)); } catch (_) {}
@@ -163,10 +163,9 @@ export const deckRuntimeJs = `
   window.addEventListener('message', function (event) {
     if (window === window.parent || event.source !== window.parent || !event.data || !Number.isInteger(event.data.index)) return;
     var index = event.data.index;
-    if (event.data.type === 'urushi:advance') go(index, { hash: false });
     if (event.data.type === 'urushi:seek') go(index, { animate: false, hash: false });
-    if (event.data.type === 'urushi:replay' && index > 0 && index < slides.length) {
-      go(index - 1, { animate: false, hash: false });
+    if ((event.data.type === 'urushi:replay' || event.data.type === 'urushi:advance') && index > 0 && index < slides.length) {
+      go(index - 1, { animate: false, hash: false, notify: false });
       go(index, { hash: false });
     }
   });
@@ -186,7 +185,7 @@ export const deckRuntimeJs = `
     var slideNumber = Number(window.location.hash.slice(2));
     if (slideNumber >= 1) initial = slideNumber - 1;
   }
-  go(initial, { hash: false, animate: false });
+  go(initial, { hash: false, animate: false, notify: false });
   if (!staticMode) window.requestAnimationFrame(function () { playSlide(slides[current]); });
 })();
 `;

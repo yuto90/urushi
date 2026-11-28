@@ -7,7 +7,7 @@ import { configuredProvider, type ProviderName } from './config.js';
 import { loadAnimationCatalog } from './animations/index.js';
 import { prepareEdit, targetSchema } from './ai/revision.js';
 import { parseDeckYaml } from './schema/index.js';
-import { renderDeckHtml, renderThumbnail } from './render/html.js';
+import { renderDeckHtml, renderStreamFrame, renderThumbnail } from './render/html.js';
 import { buildAndCheck, DeckValidationError } from './pipeline.js';
 import { exportDeck } from './export/index.js';
 import { jobs, newJob, openYaml, runGenerationJob, subscribe, type Job } from './server-jobs.js';
@@ -123,6 +123,11 @@ export async function startServer(port = 3333, defaultProvider = configuredProvi
           !request.headers['content-type']?.includes('application/json') &&
           request.headers.origin && request.headers.origin !== url.origin) {
         sendJson(response, 403, { error: 'ローカル編集画面から送信してください' });
+        return;
+      }
+      if (request.method === 'GET' && pathname === '/api/preview-frame') {
+        response.setHeader('content-security-policy', 'sandbox allow-scripts');
+        sendText(response, 200, renderStreamFrame(), 'text/html; charset=utf-8');
         return;
       }
       if (request.method === 'GET' && pathname === '/api/config') {

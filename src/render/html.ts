@@ -15,7 +15,7 @@ function inlineSafe(text: string): string {
   return text.replace(/<\/script/gi, '<\\/script');
 }
 
-function renderSlide(deck: Deck, slide: Slide, index: number): string {
+export function renderSlide(deck: Deck, slide: Slide, index: number): string {
   const body = renderToString(slide.type === 'chart'
     ? ChartSlide({ chart: deck.charts!.find((chart) => chart.id === slide.chartId)!, slide, index })
     : SlideTemplate({ slide, index }));
@@ -33,6 +33,28 @@ function serializableSpecs(specs: AnimationSpec[]): Record<string, AnimationSpec
 
 function policy(nonce?: string) {
   return `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src ${nonce ? "'nonce-" + nonce + "'" : "'none'"}; style-src 'unsafe-inline'; img-src data:; font-src data:; base-uri 'none'; form-action 'none'">`;
+}
+
+// The editor loads this frame while the provider is still writing its first page.
+// Reuse its browsing context for each complete slide, including scoped custom markup.
+export function renderStreamFrame() {
+  const nonce = randomBytes(18).toString('base64');
+  return `<!doctype html><html lang="ja"><head><meta charset="utf-8">${policy(nonce)}
+    <style>${tokenCss}${slideCss}${chartCss}</style></head><body>
+    <div class="urushi-stage"><main class="urushi-deck"></main></div><div class="deck-footer"></div>
+    <script nonce="${nonce}">
+      const deck = document.querySelector('.urushi-deck');
+      function scale() { deck.style.transform = 'translate(-50%,-50%) scale(' + Math.min(innerWidth / 1920, innerHeight / 1080) + ')'; }
+      addEventListener('resize', scale);
+      addEventListener('message', (event) => {
+        if (event.source !== parent || parent === window || event.data?.type !== 'urushi:partial') return;
+        deck.innerHTML = event.data.html;
+        deck.firstElementChild?.classList.add('active');
+        document.querySelector('.deck-footer').textContent = event.data.position;
+        scale();
+      });
+      scale();
+    </script></body></html>`;
 }
 
 export function renderThumbnail(deck: Deck, index: number) {

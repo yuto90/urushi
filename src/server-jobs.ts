@@ -8,6 +8,7 @@ import type { ProviderName } from './config.js';
 import type { JobEvent, Preview } from './editor-protocol.js';
 import type { ExportResult } from './export/exporter.js';
 import { buildDeck, readDeckFile } from './pipeline.js';
+import { renderSlide } from './render/html.js';
 import type { Deck } from './schema/index.js';
 
 export interface Job {
@@ -62,14 +63,20 @@ export function subscribe(job: Job, response: ServerResponse, after: number) {
 
 export async function runGenerationJob(job: Job, revision?: Revision) {
   try {
+    let previousCount = 0;
+    let previousIteration = 0;
     const options: Parameters<typeof generateWithFixLoop>[0] = {
       overview: job.overview, provider: createAiProvider(job.provider), outDir: job.outDir,
       onIteration: (item) => job.iterations.push(item),
       onPhase: (phase, iteration) => publish(job, { type: 'phase', phase, iteration }),
       onText: (chars) => publish(job, { type: 'text', chars }),
-      onPreview: (deck) => {
+      onPreview: (deck, iteration) => {
         const snapshot = job.snapshots.push(deck);
-        publish(job, { type: 'preview', preview: previewInfo(job.id, deck, snapshot) });
+        const from = iteration === previousIteration ? previousCount : 0;
+        const markup = deck.slides.slice(from).map((slide, offset) => renderSlide(deck, slide, from + offset));
+        publish(job, { type: 'preview', preview: previewInfo(job.id, deck, snapshot), from, markup });
+        previousCount = deck.slides.length;
+        previousIteration = iteration;
       },
     };
     if (revision) {

@@ -1,22 +1,29 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useLayoutEffect, useRef } from 'react';
 import { ChevronLeft, ChevronRight, Expand, Frame, Monitor, PencilLine, Play, SquarePen } from 'lucide-react';
 import { asset, type Preview } from '../api';
 import type { Target } from '../storage';
 import { Button } from './ui/button';
 
 export interface Playback { source: Preview; index: number; mode: 'seek' | 'replay' | 'advance'; before?: boolean }
-export function PreviewPane({ deck, playback, index, select, onSlide, edit, compare, comparison, busy }: {
-  deck?: Preview; playback?: Playback; index: number;
+export function PreviewPane({ deck, partials, playback, index, select, onSlide, edit, compare, comparison, busy }: {
+  deck?: Preview; partials: string[]; playback?: Playback; index: number;
   select(index: number, mode?: Playback['mode']): void; onSlide(index: number): void;
   edit(target: Target): void; compare(before: boolean): void; comparison?: { parent: number; version: number; index: number }; busy: boolean;
 }) {
   const frame = useRef<HTMLIFrameElement>(null);
-  const src = playback && asset(playback.source, 'html');
+  const streamFrame = useRef<HTMLIFrameElement>(null);
+  const partial = !!playback?.source.snapshot;
+  const src = !partial && playback && asset(playback.source, 'html');
   const send = () => {
     if (!playback) return;
+    if (partial) {
+      streamFrame.current?.contentWindow?.postMessage({ type: 'urushi:partial', html: partials[playback.index],
+        position: `${playback.index + 1} / ${playback.source.slides.length}` }, '*');
+      return;
+    }
     frame.current?.contentWindow?.postMessage({ type: 'urushi:' + playback.mode, index: playback.index }, '*');
   };
-  useEffect(send, [playback]);
+  useLayoutEffect(send, [playback]);
   useEffect(() => {
     function message(event: MessageEvent) {
       if (event.source === frame.current?.contentWindow && event.data?.type === 'urushi:slide' &&
@@ -30,19 +37,21 @@ export function PreviewPane({ deck, playback, index, select, onSlide, edit, comp
   return <section className="preview-pane" aria-label="プレビュー">
     <div className="preview-toolbar"><h2><Monitor size={17}/>プレビュー</h2>
       <div className="toolbar-actions"><Button variant="outline" onClick={() => edit({ kind: 'slide', index })} disabled={busy || !slide}><SquarePen size={15}/>この1枚を修正</Button>
-        <Button variant="ghost" size="icon" aria-label="全画面で発表" disabled={!slide} onClick={async () => {
+        <Button variant="ghost" size="icon" aria-label="全画面で発表" disabled={!slide || partial} onClick={async () => {
           if (frame.current) { await frame.current.requestFullscreen().catch(() => {}); frame.current.focus(); }
         }}><Expand size={17}/></Button></div></div>
     <div className="canvas-area"><div className="canvas">
+      <iframe className={'stream-frame' + (partial ? ' visible-frame' : '')} ref={streamFrame} title="生成途中のスライド"
+        aria-hidden={!partial} tabIndex={-1} sandbox="allow-scripts" src="/api/preview-frame" onLoad={partial ? send : undefined}/>
       {src ? <iframe className="deck-frame" key={src} ref={frame} title="スライドプレビュー" sandbox="allow-scripts" allow="fullscreen" src={src} onLoad={send}/>
-        : <div className="empty-canvas"><Frame size={38}/><span>最初のスライドを待っています</span></div>}
+        : !partial && <div className="empty-canvas"><Frame size={38}/><span>最初のスライドを待っています</span></div>}
     </div>
     {deck && <div className="page-controls"><Button variant="ghost" size="icon" aria-label="前の節目" disabled={!index}
       onClick={() => select(index - 1)}><ChevronLeft size={16}/></Button><span>{index + 1} / {deck.slides.length}</span>
       <Button variant="ghost" size="icon" aria-label="次の節目" disabled={index + 1 >= deck.slides.length}
         onClick={() => select(index + 1, 'advance')}><ChevronRight size={16}/></Button></div>}</div>
     {deck && <div className="filmstrip-area">
-      <div className={deck.slides.some((s) => s.interval) ? 'interval-row' : undefined}>{interval && <div className="interval-controls"><Button variant="ghost" size="small" onClick={() => select(index, 'replay')}><Play size={14}/>{interval}を再生</Button>
+      <div className={deck.slides.some((s) => s.interval) ? 'interval-row' : undefined}>{interval && <div className="interval-controls"><Button variant="ghost" size="small" disabled={partial} onClick={() => select(index, 'replay')}><Play size={14}/>{interval}を再生</Button>
         <Button variant="outline" size="small" disabled={busy} onClick={() => edit({ kind: 'transition', index })}><PencilLine size={14}/>この区間を修正</Button></div>}</div>
       <div className={comparison ? 'interval-row' : undefined}>{comparison?.index === index && <div className="compare"><span>区間を比較</span>
         <Button size="small" variant={playback?.before ? 'default' : 'outline'} disabled={busy} onClick={() => compare(true)}><Play size={13}/>変更前 v{comparison.parent}</Button>

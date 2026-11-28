@@ -8,6 +8,6 @@ export interface Preview {
 export type JobEvent =
   | { type: 'phase'; phase: 'yaml' | 'build' | 'check' | 'fix'; iteration: number }
   | { type: 'text'; chars: number }
-  | { type: 'preview'; preview: Preview }
+  | { type: 'preview'; preview: Preview; from: number; markup: string[] }
   | { type: 'done'; preview: Preview; provider: string; model: string }
   | { type: 'failed'; error: string };

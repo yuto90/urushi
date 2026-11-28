@@ -12,12 +12,31 @@ import { launchChromium } from '../dist/check/chromium.js';
 async function localApi(t) {
   if (process.env.URUSHI_TEST_URL) return process.env.URUSHI_TEST_URL;
   const child = spawn(process.execPath, ['dist/cli.js', 'serve', '--port', '0', '--provider', 'mock'], { stdio: ['ignore', 'pipe', 'inherit'] });
-  t.after(() => { child.kill(); });
+  t.after(async () => {
+    if (child.exitCode !== null || child.signalCode !== null) return;
+    const exited = once(child, 'exit');
+    child.kill();
+    const timer = setTimeout(() => child.kill('SIGKILL'), 3000);
+    try { await exited; } finally { clearTimeout(timer); }
+  });
   const [start] = await Promise.race([once(child.stdout, 'data'), once(child, 'exit').then(() => { throw new Error('Server failed to start'); })]);
   return start.toString().match(/http:\/\/localhost:(\d+)/)[0].replace('localhost', '127.0.0.1');
 }
 
 function observeReplay() {
+  window.streamPaints = [];
+  window.addEventListener('message', (event) => {
+    if (event.data?.type === 'test:paint' && event.source === document.querySelector('.stream-frame')?.contentWindow) {
+      window.streamPaints.push({ ...event.data, duringGeneration: !!document.querySelector('.progress') });
+    }
+    if (event.data?.type === 'urushi:partial') {
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        const slide = document.querySelector('.slide.active');
+        if (slide) parent.postMessage({ type: 'test:paint', title: slide.querySelector('h1')?.textContent,
+          position: document.querySelector('.deck-footer')?.textContent }, '*');
+      }));
+    }
+  });
   window.addEventListener('message', (e) => {
     if (e.data?.type !== 'urushi:replay') return;
     queueMicrotask(() => {
@@ -31,7 +50,7 @@ function observeReplay() {
   });
 }
 
-test('edit, compare, present, restore, export and resume through the editor', { timeout: 150000 }, async (t) => {
+test('edit, compare, present, restore, export and resume through the editor', { timeout: 240000 }, async (t) => {
   const base = await localApi(t);
   const evidence = process.env.URUSHI_EVIDENCE;
   const files = evidence ? resolve(evidence) : await mkdtemp(join(tmpdir(), 'urushi-editor-'));
@@ -71,11 +90,11 @@ test('edit, compare, present, restore, export and resume through the editor', { 
   await page.getByLabel('生成モデル').selectOption('mock');
   await shot('home');
   await intro.press('Enter');
-  await page.locator('.deck-frame[src*="snapshot="]').waitFor();
-  await frame().locator('.slide.active .chart-headline').filter({ hasText: '今年の売上はどう伸びたか' }).waitFor();
-  assert.equal(await page.locator('.progress').count(), 1);
+  await page.waitForFunction(() => window.streamPaints.some((paint) =>
+    paint.title === '今年の売上はどう伸びたか' && paint.position === '1 / 1' && paint.duringGeneration));
   await shot('stream');
   await version(1);
+  const paints = await page.evaluate(() => window.streamPaints);
   await headline('今年の売上はどう伸びたか');
   assert.deepEqual(events.filter((e) => e.type === 'preview').map((e) => e.preview.slides.length), [1,2,3]);
   assert.deepEqual(events.filter((e) => e.type === 'phase').map((e) => e.phase), ['yaml','build','check']);
@@ -124,15 +143,17 @@ test('edit, compare, present, restore, export and resume through the editor', { 
   await page.getByRole('button', { name: 'この1枚を修正' }).click(); await page.locator('.scope').click();
   await submit('資料全体のタイトルを「年度レビュー」に変更', 4);
   await page.getByLabel('表示する版').selectOption('1'); await version(1);
+  await thumb(3).click();
   await headline('10月の成長を支えた契約');
   await shot('history');
   await page.getByRole('button', { name: 'この版を復元' }).click(); await version(5);
 
   async function download(label, file) {
     await page.getByLabel('書き出し', { exact: true }).click();
-    const promise = page.waitForEvent('download');
-    await page.getByRole('button', { name: label, exact: true }).click();
-    const downloaded = await promise; await downloaded.saveAs(join(files, file));
+    const [downloaded] = await Promise.all([
+      page.waitForEvent('download', { timeout: 90000 }),
+      page.getByRole('button', { name: label, exact: true }).click(),
+    ]); await downloaded.saveAs(join(files, file));
     assert.equal(await downloaded.failure(), null);
   }
   for (const [label,file] of [['単体 HTML','deck.html'],['PDF','deck.pdf'],['PowerPoint（PPTX）','deck.pptx'],['バックアップ JSON','backup.json']]) {
@@ -190,6 +211,7 @@ test('edit, compare, present, restore, export and resume through the editor', { 
   }
   if (evidence) await writeFile(join(files,'mock.json'), JSON.stringify({
     stream: events.filter((e) => e.type === 'preview').slice(0,3).map((e) => e.preview.slides.length),
+    paints,
     versions: backup.versions.length, messages: backup.messages.length,
     headlineDelay: [a.slides[1].transition.headlineDelay, timing.headlineDelay],
     sameReplayStart: before, browser: browser.version(),

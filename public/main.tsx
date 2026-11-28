@@ -30,9 +30,11 @@ function App() {
   const [provider, setProvider] = useState<Provider>('vertex-gemini');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [exporting, setExporting] = useState('');
   const [pending, setPending] = useState<Message>();
   const [steps, setSteps] = useState<string[]>([]);
   const [chars, setChars] = useState(0);
+  const partials = useRef<string[]>([]);
   const locked = useRef(false);
   const cache = useRef(new Map<string, Preview>());
   const upload = useRef<HTMLInputElement>(null);
@@ -92,7 +94,10 @@ function App() {
             if (event.phase === 'fix') setChars(0);
           }
           if (event.type === 'text') setChars(event.chars);
-          if (event.type === 'preview') show(event.preview, event.preview.slides.length - 1);
+          if (event.type === 'preview') {
+            partials.current.splice(event.from, partials.current.length, ...event.markup);
+            show(event.preview, event.preview.slides.length - 1);
+          }
         });
         const reply: Message = { role: 'assistant', version: next, text: project
           ? `${target.kind === 'transition' ? '指定した区間の動き' : target.kind === 'slide' ? (target.index + 1) + '枚目' : '資料全体'}を修正しました。`
@@ -146,8 +151,11 @@ function App() {
         download(url, filename); window.setTimeout(() => URL.revokeObjectURL(url), 1000);
       } else if (format === 'html') download(asset(deck, 'html') + '?download=1', filename);
       else {
-        await request(`/api/jobs/${deck.id}/export`, {});
-        download(`/api/jobs/${deck.id}/download-${format}`, filename);
+        setExporting(format.toUpperCase());
+        try {
+          await request(`/api/jobs/${deck.id}/export`, {});
+          download(`/api/jobs/${deck.id}/download-${format}`, filename);
+        } finally { setExporting(''); }
       }
     });
   }
@@ -174,7 +182,7 @@ function App() {
           onChange={(e) => void perform(() => open(project!, Number(e.target.value), index))}>
           {project!.versions.map((_v, i) => <option key={i} value={i + 1}>v{i + 1}{i === project!.versions.length - 1 ? '（最新）' : ''}</option>).reverse()}</select><ChevronDown size={12}/></label>}
         {activeVersion && version < project!.versions.length && <Button variant="outline" disabled={busy} onClick={restore}><RotateCcw size={14}/>この版を復元</Button>}
-        {project && <details ref={exportMenu} className="export-menu"><summary aria-label="書き出し" className={busy ? 'inert' : ''}><Download size={15}/>書き出し<ChevronDown size={12}/></summary>
+        {project && <details ref={exportMenu} className="export-menu"><summary aria-label="書き出し" className={busy ? 'inert' : ''}>{exporting ? <><LoaderCircle size={15} className="spin"/>{exporting} を書き出し中</> : <><Download size={15}/>書き出し<ChevronDown size={12}/></>}</summary>
           <div>{[['html', '単体 HTML'], ['pdf', 'PDF'], ['pptx', 'PowerPoint（PPTX）'], ['json', 'バックアップ JSON']].map(([format, label]) =>
             <button key={format} disabled={busy} onClick={() => exportFile(format)}><ArrowDownToLine size={14}/>{label}</button>)}</div></details>}
         <Button variant="ghost" size="icon" disabled={busy} onClick={home} aria-label="新規作成"><Plus size={19}/></Button></>
@@ -204,7 +212,7 @@ function App() {
         </div>
         <div className="chat-input"><span className="scope-label">{target.kind === 'deck' ? '修正対象　資料全体' : '修正対象を指定中'}</span>{composer}</div>
       </section>
-      <PreviewPane deck={deck} playback={playback} index={index} onSlide={setIndex} edit={edit} busy={busy} comparison={comparison} compare={compare}
+      <PreviewPane deck={deck} partials={partials.current} playback={playback} index={index} onSlide={setIndex} edit={edit} busy={busy} comparison={comparison} compare={compare}
         select={(at, mode = 'seek') => { if (deck) { setIndex(at); setPlayback({ source: deck, index: at, mode }); } }}/>
     </main>}
   </div>;
