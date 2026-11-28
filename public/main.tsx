@@ -9,6 +9,7 @@ import { PreviewPane, type Playback } from './components/Preview';
 import './styles.css';
 
 const entire = { kind: 'deck' } as const;
+const staticDemo = import.meta.env.MODE === 'pages';
 const examples = ['年間売上を3つの節目で', '新規事業の提案を5枚で', 'プロジェクトの進捗報告'];
 const phases = { yaml: 'YAML を生成', build: 'HTML をビルド', check: 'レイアウトを検証', fix: '検証結果をもとに自己修正' };
 function targetLabel(target: Target, deck?: Preview) {
@@ -43,6 +44,7 @@ function App() {
   const activeVersion = project?.versions[version - 1];
 
   useEffect(() => {
+    if (staticDemo) return;
     storage.list().then(setRecent).catch((err) => setError(String(err)));
     request<{ provider: Provider }>('/api/config').then((config) => setProvider(config.provider)).catch((err) => setError(String(err)));
   }, []);
@@ -77,11 +79,11 @@ function App() {
   function home() {
     cache.current.clear(); setEditing(false); setProject(undefined); setVersion(0); setDeck(undefined);
     setPlayback(undefined); setText(''); setTarget(entire); setError(''); setPending(undefined);
-    storage.list().then(setRecent).catch((err) => setError(String(err)));
+    if (!staticDemo) storage.list().then(setRecent).catch((err) => setError(String(err)));
   }
   function send() {
     const instruction = text.trim();
-    if (!instruction) return;
+    if (staticDemo || !instruction) return;
     void perform(async () => {
       const next = (project?.versions.length ?? 0) + 1;
       const user: Message = { role: 'user', text: instruction, version: next, scope: targetLabel(target, deck) };
@@ -132,7 +134,7 @@ function App() {
     });
   }
   function loadBackup(file?: File) {
-    if (!file) return;
+    if (staticDemo || !file) return;
     void perform(async () => {
       const { readBackup } = await import('./backup');
       const doc = { ...readBackup(await file.text()), id: crypto.randomUUID(), updatedAt: new Date().toISOString() };
@@ -171,7 +173,7 @@ function App() {
     });
   }
   const composer = <Composer text={text} setText={setText} send={send} scope={targetLabel(target, deck)}
-    clearScope={() => edit(entire)} provider={provider} setProvider={setProvider} home={!editing} busy={busy}/>;
+    clearScope={() => edit(entire)} provider={provider} setProvider={setProvider} home={!editing} busy={busy || staticDemo}/>;
   const notice = error && <div className="error" role="alert"><CircleAlert size={16}/><span>{error}</span></div>;
   return <div className={editing ? 'studio' : 'home'}>
     <header className="app-header">
@@ -186,7 +188,7 @@ function App() {
           <div>{[['html', '単体 HTML'], ['pdf', 'PDF'], ['pptx', 'PowerPoint（PPTX）'], ['json', 'バックアップ JSON']].map(([format, label]) =>
             <button key={format} disabled={busy} onClick={() => exportFile(format)}><ArrowDownToLine size={14}/>{label}</button>)}</div></details>}
         <Button variant="ghost" size="icon" disabled={busy} onClick={home} aria-label="新規作成"><Plus size={19}/></Button></>
-        : <Button variant="outline" disabled={busy} onClick={() => upload.current?.click()}><Upload size={15}/>JSON を読み込む</Button>}</div>
+        : <Button variant="outline" disabled={busy || staticDemo} onClick={() => upload.current?.click()}><Upload size={15}/>JSON を読み込む</Button>}</div>
       <input hidden type="file" accept=".json,application/json" ref={upload} aria-label="バックアップを読み込む"
         onChange={(e) => { loadBackup(e.target.files?.[0]); e.target.value = ''; }}/>
     </header>
@@ -195,6 +197,7 @@ function App() {
       <div className="examples">{examples.map((item, i) => <button key={item} onClick={() => {
         setText(item); document.querySelector('textarea')?.focus();
       }}>{i === 0 ? <BarChart3 size={14}/> : i === 1 ? <Layers2 size={14}/> : <FileText size={14}/>} {item}<ArrowRight size={12}/></button>)}</div>
+      {staticDemo && <p className="demo-note">このデモでは要望の入力と例文の選択を試せます。資料の生成・編集・JSON の読み込みには Urushi サーバーが必要です。</p>}
       {notice}
       {recent.length > 0 && <section className="recent"><h2><FolderClock size={17}/>最近の資料</h2>
         {recent.map((doc) => <button key={doc.id} disabled={busy} onClick={() => void perform(() => open(doc, doc.versions.length))}>
