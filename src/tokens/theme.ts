@@ -79,8 +79,8 @@ h1.slide-title { font-family: var(--urushi-font-serif); font-size: 54px; line-he
 .causal-arrow { color: var(--urushi-color-accent); text-align: center; font-size: 40px; }
 .implication-strip { position: absolute; left: 0; right: 0; bottom: 0; padding: var(--urushi-space-3) var(--urushi-space-4); border-radius: var(--urushi-radius-md); background: var(--urushi-color-panel); border: 1px solid var(--urushi-color-line); font-size: 28px; color: var(--urushi-color-muted); }
 .process-steps { height: 72%; display: grid; grid-template-columns: repeat(var(--step-count, 4), 1fr); gap: var(--urushi-space-3); align-items: stretch; }
-.process-step { position: relative; padding: calc(var(--urushi-space-4) + var(--urushi-space-2)) var(--urushi-space-3) var(--urushi-space-3); overflow: hidden; }
-.step-index { position: absolute; top: var(--urushi-space-3); left: var(--urushi-space-3); width: 54px; height: 54px; border-radius: 50%; display: grid; place-items: center; background: var(--urushi-color-accent); color: var(--urushi-color-bg); font-size: 24px; font-weight: 900; }
+.process-step { padding: var(--urushi-space-3); overflow: hidden; }
+.step-index { width: 54px; height: 54px; margin-bottom: var(--urushi-space-2); border-radius: 50%; display: grid; place-items: center; background: var(--urushi-color-accent); color: var(--urushi-color-bg); font-size: 24px; font-weight: 900; }
 .step-title { font-size: 30px; line-height: 1.3; margin: 0 0 var(--urushi-space-2); font-weight: 800; }
 .step-description { color: var(--urushi-color-muted); font-size: 23px; line-height: 1.5; margin: 0; }
 .outcome-strip { margin-top: var(--urushi-space-4); padding: var(--urushi-space-3) var(--urushi-space-4); border-radius: var(--urushi-radius-md); background: var(--urushi-color-accent-soft); border-left: 6px solid var(--urushi-color-accent); font-size: 30px; font-weight: 750; }

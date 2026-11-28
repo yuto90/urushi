@@ -21,3 +21,21 @@ test('a finished slide fills its sandbox after an initially zero-sized frame is 
   const box = await slide.boundingBox();
   assert.ok(Math.abs(box.width - 640) < 1 && Math.abs(box.height - 360) < 1);
 });
+
+test('process step numbers leave the headings fully visible in a finished preview', async (t) => {
+  const browser = await launchChromium();
+  t.after(() => browser.close());
+  const page = await browser.newPage({ viewport: { width: 746, height: 420 } });
+  const html = renderDeckHtml({ version: 1, meta: { title: '図書館' }, slides: [{
+    type: 'process', title: '本の借り方', steps: [{ title: '探す' }, { title: '借りる' }, { title: '返す' }],
+  }] }, []);
+  await page.setContent(html);
+
+  const steps = await page.locator('.process-step').all();
+  assert.equal(steps.length, 3);
+  for (const step of steps) {
+    const badge = await step.locator('.step-index').boundingBox();
+    const heading = await step.getByRole('heading').boundingBox();
+    assert.ok(heading.y > badge.y + badge.height, 'the step heading must begin below its number');
+  }
+});
