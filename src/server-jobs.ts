@@ -1,8 +1,9 @@
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import type { ServerResponse } from 'node:http';
 import { createAiProvider, fixExistingDeck, generateWithFixLoop, type GenerationResult, type LoopIteration } from './ai/index.js';
+import { VertexGeminiProvider } from './ai/vertex-gemini.js';
 import { canReplay, type Revision } from './ai/revision.js';
 import type { ProviderName } from './config.js';
 import type { JobEvent, Preview } from './editor-protocol.js';
@@ -13,6 +14,7 @@ import type { Deck } from './schema/index.js';
 
 export interface Job {
   id: string;
+  owner?: string;
   status: 'running' | 'done' | 'failed';
   provider: ProviderName;
   overview: string;
@@ -29,9 +31,9 @@ export interface Job {
   exporting?: Promise<ExportResult>;
 }
 export const jobs = new Map<string, Job>();
-export function newJob(overview: string, provider: ProviderName) {
+export function newJob(overview: string, provider: ProviderName, owner?: string) {
   const id = randomUUID();
-  const job: Job = { id, overview, provider, status: 'running', createdAt: new Date().toISOString(),
+  const job: Job = { id, overview, provider, owner, status: 'running', createdAt: new Date().toISOString(),
     outDir: resolve('out', 'web', id), iterations: [], events: [], subscribers: new Set(), snapshots: [] };
   jobs.set(id, job);
   return job;
@@ -53,12 +55,13 @@ function publish(job: Job, event: JobEvent) {
 }
 
 export function subscribe(job: Job, response: ServerResponse, after: number) {
-  response.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', 'x-accel-buffering': 'no' });
+  response.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'private, no-store, no-transform', 'x-accel-buffering': 'no' });
   response.write(': connected\n\n');
   job.events.forEach((event, i) => { if (i + 1 > after) response.write(packet(event, i + 1)); });
   if (job.status !== 'running') { response.end(); return; }
   job.subscribers.add(response);
-  response.on('close', () => job.subscribers.delete(response));
+  const heartbeat = setInterval(() => response.write(': keep-alive\n\n'), 15_000);
+  response.on('close', () => { clearInterval(heartbeat); job.subscribers.delete(response); });
 }
 
 export async function runGenerationJob(job: Job, revision?: Revision) {
@@ -66,7 +69,7 @@ export async function runGenerationJob(job: Job, revision?: Revision) {
     let previousCount = 0;
     let previousIteration = 0;
     const options: Parameters<typeof generateWithFixLoop>[0] = {
-      overview: job.overview, provider: createAiProvider(job.provider), outDir: job.outDir,
+      overview: job.overview, provider: job.owner ? new VertexGeminiProvider('gemini-4-neon') : createAiProvider(job.provider), outDir: job.outDir,
       onIteration: (item) => job.iterations.push(item),
       onPhase: (phase, iteration) => publish(job, { type: 'phase', phase, iteration }),
       onText: (chars) => publish(job, { type: 'text', chars }),
@@ -91,13 +94,15 @@ export async function runGenerationJob(job: Job, revision?: Revision) {
     publish(job, { type: 'done', preview: previewInfo(job.id, job.deck), provider: job.result.provider, model: job.result.model });
   } catch (error) {
     job.status = 'failed';
-    job.error = error instanceof Error ? error.message : String(error);
+    job.error = job.owner && !job.result
+      ? '生成を完了できませんでした。時間をおいてもう一度お試しください'
+      : error instanceof Error ? error.message : String(error);
     publish(job, { type: 'failed', error: job.error });
   }
 }
 
-export async function openYaml(yaml: string, provider: ProviderName) {
-  const job = newJob('', provider);
+export async function openYaml(yaml: string, provider: ProviderName, owner?: string) {
+  const job = newJob('', provider, owner);
   try {
     await mkdir(job.outDir, { recursive: true });
     const deckPath = join(job.outDir, 'deck.yaml');
@@ -111,5 +116,14 @@ export async function openYaml(yaml: string, provider: ProviderName) {
   } catch (error) {
     jobs.delete(job.id);
     throw error;
+  }
+}
+
+// Hosted job URLs are temporary. The local editor keeps its existing output files.
+export async function pruneHostedJobs(now = Date.now()) {
+  for (const job of jobs.values()) {
+    if (!job.owner || job.status === 'running' || job.exporting || now - Date.parse(job.createdAt) < 3_600_000) continue;
+    jobs.delete(job.id);
+    await rm(job.outDir, { recursive: true, force: true }).catch(() => {});
   }
 }
