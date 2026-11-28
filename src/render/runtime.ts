@@ -5,6 +5,7 @@ export const deckRuntimeJs = `
   var WIDTH = 1920;
   var HEIGHT = 1080;
   var deck = document.querySelector('.urushi-deck');
+  var stage = deck && deck.parentElement;
   var slides = Array.prototype.slice.call(document.querySelectorAll('.slide'));
   var footer = document.querySelector('.deck-footer');
   var current = 0;
@@ -16,8 +17,8 @@ export const deckRuntimeJs = `
   if (params.has('print')) document.documentElement.classList.add('print-mode');
 
   function scaleDeck() {
-    if (!deck || params.has('print')) return;
-    var scale = Math.min(window.innerWidth / WIDTH, window.innerHeight / HEIGHT);
+    if (!stage || params.has('print')) return;
+    var scale = Math.min(stage.clientWidth / WIDTH, stage.clientHeight / HEIGHT);
     deck.style.transform = 'translate(-50%, -50%) scale(' + scale + ')';
   }
 
@@ -159,7 +160,7 @@ export const deckRuntimeJs = `
     var x = event.clientX || 0;
     if (x > window.innerWidth * 0.72) next();
   });
-  window.addEventListener('resize', scaleDeck);
+  if (stage && !params.has('print')) new ResizeObserver(scaleDeck).observe(stage);
   window.addEventListener('message', function (event) {
     if (window === window.parent || event.source !== window.parent || !event.data) return;
     if (event.data.type === 'urushi:key') {
