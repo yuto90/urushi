@@ -1,0 +1,8 @@
+**
+!Dockerfile
+!package*.json
+!tsconfig.json
+!src
+!src/**
+!urushi.components
+!urushi.components/**

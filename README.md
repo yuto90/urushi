@@ -195,7 +195,17 @@ AI は `animation: <name>` でカタログ内の部品を選ぶだけです。�
 
 ## Cloudflare Pages の公開デモ
 
-編集画面の公開版では、要望を入力したり例文を選んだりできます。資料の生成・修正、JSON の読み込み、プレビュー、書き出しにはローカルの Urushi サーバーが必要です。[公開デモを開く](https://urushi-demo.pages.dev/)
+公開トップで要望を入力し、「送信」または「メールでログイン」を押します。Cloudflare Access から許可されたメールアドレスに届くワンタイムコードでログインすると、元の要望が入力欄に戻ります。「送信」で Vertex AI Gemini 4 Neon が生成を開始し、文字数、描画できたスライド、レイアウト検証の進行を表示します。[公開版を開く](https://urushi-demo.pages.dev/)
+
+公開版の会話と版はタブ内で管理します。閉じる前に「書き出し」からバックアップ JSON を保存してください。ローカル版は従来どおり IndexedDB に保存します。
+
+### 公開版の生成 API
+
+Cloudflare Access の Self-hosted アプリで `urushi-demo.pages.dev/api` を保護し、ログイン方法は One-time PIN、Allow ポリシーは対象のメール1件に設定します。トップと静的ファイルは匿名で閲覧できます。Pages の Worker は本番ホストの `/api/*` を Cloud Run に中継します。Access の署名済みアプリトークンだけを認証に使用し、Cloud Run はリクエストごとに署名・発行元・対象アプリ・期限・メールアドレスを検証します。ジョブ、進捗、プレビューとダウンロードの権限は署名済みの `sub` とジョブ作成者を照合します。
+
+Cloud Run サービス `urushi-api` は `asia-northeast1`、Vertex AI は `global` を使用します。コンテナは専用サービスアカウントの ADC を使い、必要なモデル権限は `aiplatform.endpoints.predict` です。認証設定は Cloud Run の `URUSHI_ACCESS_ISSUER`（チーム URL）、`URUSHI_ACCESS_AUD`（アプリの AUD タグ）、`URUSHI_OWNER_EMAIL` に設定します。値の欠落時は利用できません。`GOOGLE_CLOUD_PROJECT` に専用の Vertex プロジェクトを指定します。
+
+API を更新する際は、対象コミットのクリーンなチェックアウトで Dockerfile を `linux/amd64` 向けにビルドし、専用の Artifact Registry にコミット SHA タグで push します。既存の Cloud Run サービスを対応するイメージダイジェストに更新してから Pages をリリースします。初版のサーバーは同時インスタンスを1、最小を0とし、ジョブの状態・作業ファイルを一時的に保持します。コンテナの再起動や約1時間後の片付けでジョブ URL は失効します。失効後は保存した JSON をログイン後に読み込んで再描画できます。
 
 `npm run build:demo` で静的配信用の編集画面が `dist/pages/` に出力されます。GitHub Actions はビルドとテストに成功した `main` の push で、このディレクトリを既存の Direct Upload プロジェクト `urushi-demo` の本番ブランチ `main` に配信します。配信後に本番のコミット SHA と公開トップの HTML を照合します。
 

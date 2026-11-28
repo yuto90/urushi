@@ -6,10 +6,11 @@ import { storage, type Message, type Project, type Target } from './storage';
 import { Button } from './components/ui/button';
 import { Composer } from './components/Composer';
 import { PreviewPane, type Playback } from './components/Preview';
+import { accessSession, login, takeDraft } from './hosted';
 import './styles.css';
 
 const entire = { kind: 'deck' } as const;
-const staticDemo = import.meta.env.MODE === 'pages';
+const hosted = import.meta.env.MODE === 'pages';
 const examples = ['年間売上を3つの節目で', '新規事業の提案を5枚で', 'プロジェクトの進捗報告'];
 const phases = { yaml: 'YAML を生成', build: 'HTML をビルド', check: 'レイアウトを検証', fix: '検証結果をもとに自己修正' };
 function targetLabel(target: Target, deck?: Preview) {
@@ -27,7 +28,8 @@ function App() {
   const [playback, setPlayback] = useState<Playback>();
   const [index, setIndex] = useState(0);
   const [target, setTarget] = useState<Target>(entire);
-  const [text, setText] = useState('');
+  const [text, setText] = useState(() => hosted ? takeDraft() : '');
+  const [expires, setExpires] = useState<number>();
   const [provider, setProvider] = useState<Provider>('vertex-gemini');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -44,10 +46,31 @@ function App() {
   const activeVersion = project?.versions[version - 1];
 
   useEffect(() => {
-    if (staticDemo) return;
+    if (hosted) {
+      accessSession().then(setExpires).catch((err) => setError(err.message));
+      return;
+    }
     storage.list().then(setRecent).catch((err) => setError(String(err)));
     request<{ provider: Provider }>('/api/config').then((config) => setProvider(config.provider)).catch((err) => setError(String(err)));
   }, []);
+  useEffect(() => {
+    if (!hosted || !expires) return;
+    const reset = () => location.replace('/');
+    const timer = window.setTimeout(reset, Math.max(0, expires * 1000 - Date.now()));
+    const refresh = () => {
+      if (document.visibilityState === 'visible') accessSession().then((session) => {
+        if (!session) reset(); else setExpires(session);
+      }).catch(() => setError('生成サーバーに接続できません'));
+    };
+    const restorePage = (event: PageTransitionEvent) => { if (event.persisted) reset(); };
+    document.addEventListener('visibilitychange', refresh);
+    window.addEventListener('pageshow', restorePage);
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener('visibilitychange', refresh);
+      window.removeEventListener('pageshow', restorePage);
+    };
+  }, [expires]);
   useEffect(() => { endChat.current?.scrollIntoView({ block: 'nearest' }); }, [pending, steps, project]);
 
   async function perform(work: () => Promise<void>) {
@@ -79,11 +102,12 @@ function App() {
   function home() {
     cache.current.clear(); setEditing(false); setProject(undefined); setVersion(0); setDeck(undefined);
     setPlayback(undefined); setText(''); setTarget(entire); setError(''); setPending(undefined);
-    if (!staticDemo) storage.list().then(setRecent).catch((err) => setError(String(err)));
+    if (!hosted) storage.list().then(setRecent).catch((err) => setError(String(err)));
   }
   function send() {
     const instruction = text.trim();
-    if (staticDemo || !instruction) return;
+    if (!instruction) return;
+    if (hosted && !expires) { login(text); return; }
     void perform(async () => {
       const next = (project?.versions.length ?? 0) + 1;
       const user: Message = { role: 'user', text: instruction, version: next, scope: targetLabel(target, deck) };
@@ -109,7 +133,7 @@ function App() {
           messages: [...(project?.messages ?? []), user, reply],
           versions: [...(project?.versions ?? []), { yaml: result.yaml, parent: version, target }],
         };
-        await storage.save(doc, next - 1);
+        if (!hosted) await storage.save(doc, next - 1);
         cache.current.set(doc.id + ':' + next, result.preview);
         remember(doc); setVersion(next); setTarget(entire);
         show(result.preview, target.kind === 'deck' ? (project ? index : 0) : target.index);
@@ -129,17 +153,19 @@ function App() {
       const doc: Project = { ...project, title: deck.title, updatedAt: new Date().toISOString(),
         versions: [...project.versions, { yaml: activeVersion.yaml, restored: version, parent: latest, target: entire }],
         messages: [...project.messages, { role: 'assistant', version: next, text: `v${version} を復元しました。` }] };
-      await storage.save(doc, latest); cache.current.set(doc.id + ':' + next, deck);
+      if (!hosted) await storage.save(doc, latest);
+      cache.current.set(doc.id + ':' + next, deck);
       remember(doc); setVersion(next); setTarget(entire); show(deck, index);
     });
   }
   function loadBackup(file?: File) {
-    if (staticDemo || !file) return;
+    if (!file || (hosted && !expires)) return;
     void perform(async () => {
       const { readBackup } = await import('./backup');
       const doc = { ...readBackup(await file.text()), id: crypto.randomUUID(), updatedAt: new Date().toISOString() };
       const media = await mediaFor(doc, doc.versions.length);
-      await storage.save(doc, 0); remember(doc); setVersion(doc.versions.length); setTarget(entire);
+      if (!hosted) await storage.save(doc, 0);
+      remember(doc); setVersion(doc.versions.length); setTarget(entire);
       setText(''); setEditing(true); show(media, 0);
     });
   }
@@ -173,13 +199,15 @@ function App() {
     });
   }
   const composer = <Composer text={text} setText={setText} send={send} scope={targetLabel(target, deck)}
-    clearScope={() => edit(entire)} provider={provider} setProvider={setProvider} home={!editing} busy={busy || staticDemo}/>;
+    clearScope={() => edit(entire)} provider={provider} setProvider={setProvider} home={!editing} busy={busy} fixedModel={hosted}/>;
   const notice = error && <div className="error" role="alert"><CircleAlert size={16}/><span>{error}</span></div>;
   return <div className={editing ? 'studio' : 'home'}>
     <header className="app-header">
       <div className="header-start"><button className="brand" onClick={home} disabled={busy} aria-label="Urushi ホーム"><span className="brand-mark" aria-hidden="true"/><span>Urushi</span></button>
         {editing && <><span className="header-divider"/><span className="document-name">{deck?.title ?? project?.title ?? '新しい資料'}</span></>}</div>
-      <div className="header-actions">{editing ? <>
+      <div className="header-actions">{hosted && (expires
+        ? <Button variant="ghost" disabled={busy} onClick={() => location.assign('/cdn-cgi/access/logout')}>ログアウト</Button>
+        : <Button variant="outline" onClick={() => login(text)}>メールでログイン</Button>)}{editing ? <>
         {activeVersion && <label className="versions"><History size={15}/><select aria-label="表示する版" value={version} disabled={busy}
           onChange={(e) => void perform(() => open(project!, Number(e.target.value), index))}>
           {project!.versions.map((_v, i) => <option key={i} value={i + 1}>v{i + 1}{i === project!.versions.length - 1 ? '（最新）' : ''}</option>).reverse()}</select><ChevronDown size={12}/></label>}
@@ -188,7 +216,7 @@ function App() {
           <div>{[['html', '単体 HTML'], ['pdf', 'PDF'], ['pptx', 'PowerPoint（PPTX）'], ['json', 'バックアップ JSON']].map(([format, label]) =>
             <button key={format} disabled={busy} onClick={() => exportFile(format)}><ArrowDownToLine size={14}/>{label}</button>)}</div></details>}
         <Button variant="ghost" size="icon" disabled={busy} onClick={home} aria-label="新規作成"><Plus size={19}/></Button></>
-        : <Button variant="outline" disabled={busy || staticDemo} onClick={() => upload.current?.click()}><Upload size={15}/>JSON を読み込む</Button>}</div>
+        : (!hosted || expires) && <Button variant="outline" disabled={busy} onClick={() => upload.current?.click()}><Upload size={15}/>JSON を読み込む</Button>}</div>
       <input hidden type="file" accept=".json,application/json" ref={upload} aria-label="バックアップを読み込む"
         onChange={(e) => { loadBackup(e.target.files?.[0]); e.target.value = ''; }}/>
     </header>
@@ -197,7 +225,7 @@ function App() {
       <div className="examples">{examples.map((item, i) => <button key={item} onClick={() => {
         setText(item); document.querySelector('textarea')?.focus();
       }}>{i === 0 ? <BarChart3 size={14}/> : i === 1 ? <Layers2 size={14}/> : <FileText size={14}/>} {item}<ArrowRight size={12}/></button>)}</div>
-      {staticDemo && <p className="demo-note">このデモでは要望の入力と例文の選択を試せます。資料の生成・編集・JSON の読み込みには Urushi サーバーが必要です。</p>}
+      {hosted && !expires && <p className="demo-note">資料を生成するには、許可されたメールアドレスでログインしてください。</p>}
       {notice}
       {recent.length > 0 && <section className="recent"><h2><FolderClock size={17}/>最近の資料</h2>
         {recent.map((doc) => <button key={doc.id} disabled={busy} onClick={() => void perform(() => open(doc, doc.versions.length))}>

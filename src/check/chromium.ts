@@ -1,5 +1,8 @@
 import { existsSync } from 'node:fs';
-import { chromium, type Browser } from 'playwright-core';
+import { readFile } from 'node:fs/promises';
+import { resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
+import { chromium, type Browser, type Page } from 'playwright-core';
 
 function firstExisting(paths: Array<string | undefined>): string | undefined {
   return paths.find((path): path is string => !!path && existsSync(path));
@@ -35,4 +38,24 @@ export async function launchChromium(): Promise<Browser> {
     throw new Error('Chromium が見つかりません。Google Chrome をインストールするか、URUSHI_CHROMIUM_PATH を指定してください。');
   }
   return chromium.launch({ headless: true, executablePath });
+}
+
+// A hosted deck is self-contained. Give Chromium only this document, without file or network access.
+export async function openDeckDocument(browser: Browser, htmlPath: string, query: string): Promise<Page> {
+  const hosted = Boolean(process.env.K_SERVICE || process.env.URUSHI_HOSTED === '1');
+  const page = await browser.newPage({ viewport: { width: 1920, height: 1080 }, deviceScaleFactor: 1,
+    serviceWorkers: 'block', acceptDownloads: false });
+  let url = pathToFileURL(resolve(htmlPath)).href + query;
+  if (hosted) {
+    url = 'https://render.invalid/deck.html' + query;
+    const html = await readFile(htmlPath);
+    await page.context().route('**/*', async (route) => {
+      if (route.request().url() === url && route.request().isNavigationRequest() && route.request().frame() === page.mainFrame()) {
+        await route.fulfill({ contentType: 'text/html; charset=utf-8', body: html });
+      } else await route.abort();
+    });
+    await page.context().setOffline(true);
+  }
+  await page.goto(url, { waitUntil: 'load' });
+  return page;
 }

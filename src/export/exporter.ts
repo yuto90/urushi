@@ -1,6 +1,6 @@
 import { mkdir } from 'node:fs/promises';
-import { join, resolve } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { join } from 'node:path';
+import { openDeckDocument } from '../check/chromium.js';
 import pptxgen from 'pptxgenjs';
 import { captureSlideScreenshots, launchChromium } from '../check/index.js';
 import type { Deck } from '../schema/index.js';
@@ -14,8 +14,7 @@ export interface ExportResult {
 export async function exportPdf(htmlPath: string, pdfPath: string): Promise<string> {
   const browser = await launchChromium();
   try {
-    const page = await browser.newPage({ viewport: { width: 1920, height: 1080 }, deviceScaleFactor: 1 });
-    await page.goto(`${pathToFileURL(resolve(htmlPath)).href}?print=1&static=1`, { waitUntil: 'load' });
+    const page = await openDeckDocument(browser, htmlPath, '?print=1&static=1');
     await page.emulateMedia({ media: 'print' });
     await page.pdf({
       path: pdfPath,

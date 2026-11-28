@@ -1,8 +1,7 @@
 import { mkdir } from 'node:fs/promises';
-import { basename, join, resolve } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { basename, join } from 'node:path';
 import type { Page } from 'playwright-core';
-import { launchChromium } from './chromium.js';
+import { launchChromium, openDeckDocument } from './chromium.js';
 import type { CheckError, CheckResult } from './types.js';
 
 interface BrowserCheckPayload {
@@ -14,16 +13,14 @@ interface BrowserCheckPayload {
 
 async function openDeckPage(htmlPath: string): Promise<{ page: Page; close: () => Promise<void> }> {
   const browser = await launchChromium();
-  const page = await browser.newPage({ viewport: { width: 1920, height: 1080 }, deviceScaleFactor: 1 });
-  const url = `${pathToFileURL(resolve(htmlPath)).href}?static=1`;
-  await page.goto(url, { waitUntil: 'load' });
-  await page.waitForFunction(() => Boolean((window as unknown as { __urushi?: unknown }).__urushi));
-  return {
-    page,
-    close: async () => {
-      await browser.close();
-    },
-  };
+  try {
+    const page = await openDeckDocument(browser, htmlPath, '?static=1');
+    await page.waitForFunction(() => Boolean((window as unknown as { __urushi?: unknown }).__urushi));
+    return { page, close: () => browser.close() };
+  } catch (error) {
+    await browser.close();
+    throw error;
+  }
 }
 
 async function gotoSlide(page: Page, index: number): Promise<void> {
