@@ -161,7 +161,13 @@ export const deckRuntimeJs = `
   });
   window.addEventListener('resize', scaleDeck);
   window.addEventListener('message', function (event) {
-    if (window === window.parent || event.source !== window.parent || !event.data || !Number.isInteger(event.data.index)) return;
+    if (window === window.parent || event.source !== window.parent || !event.data) return;
+    if (event.data.type === 'urushi:key') {
+      if (event.data.key === 'ArrowRight') next();
+      if (event.data.key === 'ArrowLeft') prev();
+      return;
+    }
+    if (!Number.isInteger(event.data.index)) return;
     var index = event.data.index;
     if (event.data.type === 'urushi:seek') go(index, { animate: false, hash: false });
     if ((event.data.type === 'urushi:replay' || event.data.type === 'urushi:advance') && index > 0 && index < slides.length) {
