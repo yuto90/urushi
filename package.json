@@ -9,6 +9,7 @@
   "scripts": {
     "dev": "npm run build && node dist/cli.js serve",
     "build": "tsc -p tsconfig.json && vite build",
+    "build:demo": "vite build --mode pages",
     "build:pages": "npm run build && node scripts/build-pages.mjs",
     "typecheck": "tsc --noEmit && tsc -p public/tsconfig.json",
     "cli": "npm run build --silent && node dist/cli.js",

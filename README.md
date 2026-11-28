@@ -193,6 +193,21 @@ AI は `animation: <name>` でカタログ内の部品を選ぶだけです。�
 
 `urushi.components/*.mjs` に同じ契約の部品を置くとカタログへ追加できます。例: [`urushi.components/fade-rise.mjs`](urushi.components/fade-rise.mjs)。
 
+## Cloudflare Pages の公開デモ
+
+編集画面の公開版では、要望を入力したり例文を選んだりできます。資料の生成・修正、JSON の読み込み、プレビュー、書き出しにはローカルの Urushi サーバーが必要です。[公開デモを開く](https://urushi-demo.pages.dev/)
+
+`npm run build:demo` で静的配信用の編集画面が `dist/pages/` に出力されます。GitHub Actions はビルドとテストに成功した `main` の push で、このディレクトリを既存の Direct Upload プロジェクト `urushi-demo` の本番ブランチ `main` に配信します。配信後に本番のコミット SHA と公開トップの HTML を照合します。
+
+デプロイの認証は GitHub Environment `production` で設定します。デプロイ可能なブランチは `main` です。
+
+| 種類 | 名前 | 設定値 |
+| --- | --- | --- |
+| Environment variable | `CLOUDFLARE_ACCOUNT_ID` | `urushi-demo` が属する Cloudflare アカウント ID |
+| Environment secret | `CLOUDFLARE_API_TOKEN` | そのアカウントで発行した CI 専用の Account API token。権限は Account → Cloudflare Pages → Edit |
+
+トークンの発行には Cloudflare の API Token Provisioning 権限または Super Administrator 権限が必要です。[Cloudflare の Account API tokens](https://developers.cloudflare.com/fundamentals/api/get-started/account-owned-tokens/) · [Pages の CI 設定](https://developers.cloudflare.com/pages/how-to/use-direct-upload-with-continuous-integration/)
+
 ## GitHub Pages（一時公開）
 
 Pages は生成済みサンプル3本の静的ギャラリーです。ブラウザから Vertex AI を呼ぶ機能はありません。
@@ -216,4 +231,4 @@ node dist/cli.js export examples/planning-proposal.yaml --out out/export --pdf -
 npm run build:pages
 ```
 
-CI は typecheck と build を実行します。Playwright が必要な実測検証はローカルの Chromium で行います。
+CI は型チェック、ビルド、既存の編集・生成テストと、公開デモのブラウザテストを実行します。

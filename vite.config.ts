@@ -1,10 +1,10 @@
 import { defineConfig } from 'vite';
 import tailwindcss from '@tailwindcss/vite';
 
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
   root: 'public',
-  publicDir: false,
+  publicDir: mode === 'pages' ? '../pages' : false,
   plugins: [tailwindcss()],
   esbuild: { jsx: 'automatic', jsxImportSource: 'react' },
-  build: { outDir: '../dist/editor', emptyOutDir: true },
-});
+  build: { outDir: mode === 'pages' ? '../dist/pages' : '../dist/editor', emptyOutDir: true },
+}));
