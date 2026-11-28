@@ -32,12 +32,240 @@
       ],
       "additionalProperties": false
     },
+    "charts": {
+      "maxItems": 20,
+      "type": "array",
+      "items": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "flow"
+              },
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 40
+              },
+              "nodes": {
+                "minItems": 2,
+                "maxItems": 5,
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "label": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 16
+                    },
+                    "description": {
+                      "type": "string",
+                      "maxLength": 38
+                    }
+                  },
+                  "required": [
+                    "label"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "kind",
+              "id",
+              "nodes"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "bar"
+              },
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 40
+              },
+              "unit": {
+                "type": "string",
+                "maxLength": 8
+              },
+              "bars": {
+                "minItems": 2,
+                "maxItems": 12,
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "label": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 16
+                    },
+                    "value": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1000000000
+                    }
+                  },
+                  "required": [
+                    "label",
+                    "value"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "breakdown": {
+                "type": "object",
+                "properties": {
+                  "bar": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 16
+                  },
+                  "items": {
+                    "minItems": 1,
+                    "maxItems": 4,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "label": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 16
+                        },
+                        "value": {
+                          "type": "number",
+                          "minimum": 0,
+                          "maximum": 1000000000
+                        }
+                      },
+                      "required": [
+                        "label",
+                        "value"
+                      ],
+                      "additionalProperties": false
+                    }
+                  }
+                },
+                "required": [
+                  "bar",
+                  "items"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "id",
+              "unit",
+              "bars"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      }
+    },
     "slides": {
       "minItems": 1,
       "maxItems": 20,
       "type": "array",
       "items": {
         "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "chart"
+              },
+              "title": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 30
+              },
+              "chartId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 40
+              },
+              "headline": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 42
+              },
+              "highlight": {
+                "maxItems": 12,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 16
+                }
+              },
+              "showBreakdown": {
+                "type": "boolean"
+              },
+              "annotation": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 50
+              },
+              "transition": {
+                "type": "object",
+                "properties": {
+                  "emphasisDuration": {
+                    "type": "number",
+                    "minimum": 0.1,
+                    "maximum": 4
+                  },
+                  "headlineDelay": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 6
+                  },
+                  "detailDuration": {
+                    "type": "number",
+                    "minimum": 0.1,
+                    "maximum": 4
+                  }
+                },
+                "required": [
+                  "emphasisDuration",
+                  "headlineDelay",
+                  "detailDuration"
+                ],
+                "additionalProperties": false
+              },
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 40
+              },
+              "animation": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 80
+              },
+              "notes": {
+                "type": "string",
+                "maxLength": 800
+              }
+            },
+            "required": [
+              "type",
+              "title",
+              "chartId",
+              "headline"
+            ],
+            "additionalProperties": false
+          },
           {
             "type": "object",
             "properties": {

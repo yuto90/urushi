@@ -1,3 +1,6 @@
+import { readFile } from 'node:fs/promises';
+import { setTimeout as delay } from 'node:timers/promises';
+import type { EditRequest } from './revision.js';
 import { parse, stringify } from 'yaml';
 import type { Deck } from '../schema/index.js';
 import type { AiCompleteRequest, AiProvider } from './types.js';
@@ -114,17 +117,53 @@ function fixMockYaml(currentYaml: string, errorsJson: string): string {
   return stringify(deck);
 }
 
+function mockEdit({ base, target, instruction }: EditRequest) {
+  const copy = structuredClone(base);
+  const text = (instruction.match(/[「『](.+?)[」』]/)?.[1] ?? instruction).slice(0, 26);
+  if (target.kind === 'transition') {
+    const slide = copy.slides[target.index];
+    if (slide.type !== 'chart') throw new Error('対象がグラフではありません');
+    const timing = slide.transition ?? { emphasisDuration: 0.55, headlineDelay: 0.65, detailDuration: 0.65 };
+    return stringify({ ...timing, headlineDelay: /早|速/.test(instruction)
+      ? Math.max(0, timing.headlineDelay - 0.65) : Math.min(6, Math.round((timing.headlineDelay + 0.85) * 100) / 100) });
+  }
+  const slide = copy.slides[target.kind === 'slide' ? target.index : 0];
+  if (slide.type === 'chart') slide.headline = text;
+  else slide.title = text;
+  if (target.kind === 'slide') return stringify(slide);
+  copy.meta.title = text;
+  return stringify(copy);
+}
+
 export class MockProvider implements AiProvider {
   name = 'mock' as const;
   model = 'mock';
 
   async complete(request: AiCompleteRequest): Promise<string> {
+    const text = request.edit ? mockEdit(request.edit) : await this.generate(request);
+    if (request.onText) {
+      for (let offset = 0; offset < text.length; offset += 32) {
+        request.onText(text.slice(offset, offset + 32));
+        await delay(65);
+      }
+    }
+    return text;
+  }
+
+  private async generate(request: AiCompleteRequest) {
     const current = request.prompt.match(/---CURRENT-YAML---\n([\s\S]*?)\n---END-CURRENT-YAML---/);
     if (current) {
       const errors = request.prompt.match(/検証エラーJSON:\n([\s\S]*)$/);
       return fixMockYaml(current[1], errors?.[1]?.trim() || '[]');
     }
     const overview = request.prompt.match(/作成してほしいスライド概要:\n([\s\S]*)$/)?.[1] ?? 'サンプル';
-    return stringify(sampleDeck(overview));
+    if (/売上|年間グラフ/.test(overview)) {
+      return readFile(new URL('../../examples/annual-sales.yaml', import.meta.url), 'utf8');
+    }
+    const deck = sampleDeck(overview);
+    const requested = Number(overview.match(/(\d+)枚/)?.[1] ?? deck.slides.length);
+    const originals = deck.slides;
+    deck.slides = Array.from({ length: Math.min(20, Math.max(1, requested)) }, (_, i) => originals[i % originals.length]);
+    return stringify(deck, { aliasDuplicateObjects: false });
   }
 }

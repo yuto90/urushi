@@ -1,0 +1,43 @@
+version: 1
+meta:
+  title: 年間売上レポート
+charts:
+  - id: monthly-sales
+    unit: 百万円
+    bars:
+      - { label: 1月, value: 42 }
+      - { label: 2月, value: 45 }
+      - { label: 3月, value: 48 }
+      - { label: 4月, value: 46 }
+      - { label: 5月, value: 52 }
+      - { label: 6月, value: 50 }
+      - { label: 7月, value: 64 }
+      - { label: 8月, value: 69 }
+      - { label: 9月, value: 76 }
+      - { label: 10月, value: 96 }
+      - { label: 11月, value: 92 }
+      - { label: 12月, value: 104 }
+    breakdown:
+      bar: 10月
+      items:
+        - { label: 法人契約, value: 68 }
+        - { label: 個人契約, value: 28 }
+slides:
+  - type: chart
+    chartId: monthly-sales
+    title: 年間売上
+    headline: 今年の売上はどう伸びたか
+  - type: chart
+    chartId: monthly-sales
+    title: 下半期
+    headline: 成長は下半期に集中
+    highlight: [7月, 8月, 9月, 10月, 11月, 12月]
+    transition: { emphasisDuration: 0.6, headlineDelay: 0.7, detailDuration: 0.5 }
+  - type: chart
+    chartId: monthly-sales
+    title: 10月の内訳
+    headline: 10月の成長を支えた契約
+    highlight: [10月]
+    showBreakdown: true
+    annotation: 法人契約が増加
+    transition: { emphasisDuration: 0.5, headlineDelay: 0.4, detailDuration: 0.8 }

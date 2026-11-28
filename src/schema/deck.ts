@@ -1,3 +1,4 @@
+import { chartLabels, chartSchema, chartState } from './chart.js';
 import { z } from 'zod';
 import { parse as parseYaml } from 'yaml';
 
@@ -79,6 +80,7 @@ export const customSlideSchema = z.object({
 });
 
 export const slideSchema = z.discriminatedUnion('type', [
+  z.object({ ...chartState, ...baseSlide }),
   conclusionSlideSchema,
   comparisonSlideSchema,
   causalSlideSchema,
@@ -95,7 +97,26 @@ export const deckSchema = z.object({
     author: z.string().max(60).optional(),
     theme: z.literal('urushi-dark').optional(),
   }),
+  charts: z.array(chartSchema).max(20).optional(),
   slides: z.array(slideSchema).min(1).max(20),
+}).superRefine((deck, ctx) => {
+  const charts = new Map(deck.charts?.map((chart) => [chart.id, chart]));
+  deck.charts?.forEach((chart, index) => {
+    const names = chartLabels(chart);
+    const labels = new Set(names);
+    if (charts.get(chart.id) !== chart || labels.size !== names.length ||
+        (chart.kind !== 'flow' && chart.breakdown && !labels.has(chart.breakdown.bar))) {
+      ctx.addIssue({ code: 'custom', path: ['charts', index], message: 'グラフID・棒の名前は一意にし、内訳には存在する棒を指定してください' });
+    }
+  });
+  deck.slides.forEach((slide, index) => {
+    if (slide.type !== 'chart') return;
+    const chart = charts.get(slide.chartId);
+    if (!chart || (slide.showBreakdown && (chart.kind === 'flow' || !chart.breakdown)) ||
+        slide.highlight?.some((label) => !chartLabels(chart).includes(label))) {
+      ctx.addIssue({ code: 'custom', path: ['slides', index, 'chartId'], message: 'グラフ・強調する棒・内訳の参照を確認してください' });
+    }
+  });
 });
 
 export type Deck = z.infer<typeof deckSchema>;
@@ -122,7 +143,11 @@ export function validateDeck(input: unknown): DeckValidationResult {
 }
 
 export function parseDeckYaml(yamlText: string): DeckValidationResult {
-  return validateDeck(parseYaml(yamlText));
+  try {
+    return validateDeck(parseYaml(yamlText));
+  } catch (error) {
+    return { ok: false, errors: [{ code: 'custom', path: [], message: String(error) }] };
+  }
 }
 
 export function zodIssuePath(issue: z.core.$ZodIssue): string {

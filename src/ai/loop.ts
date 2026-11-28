@@ -1,12 +1,13 @@
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
-import { stringify, parse as parseYaml } from 'yaml';
-import { loadAnimationCatalog, type AnimationSpec } from '../animations/index.js';
-import { checkRenderedDeck } from '../check/index.js';
-import type { CheckError, CheckResult } from '../check/index.js';
-import { buildDeck, DeckValidationError, schemaErrorsFromZod, writeDeckFile } from '../pipeline.js';
+import { parse as parseYaml } from 'yaml';
+import { loadAnimationCatalog } from '../animations/index.js';
+import { checkRenderedDeck, type CheckError } from '../check/index.js';
+import { buildDeck, schemaErrorsFromZod, schemaIssueToCheckError } from '../pipeline.js';
 import { parseDeckYaml, type Deck } from '../schema/index.js';
 import { createAiProvider, extractYamlText, fixPrompt, generationPrompt } from './index.js';
+import { applyReply, prepareEdit, revisionPrompt, type Revision } from './revision.js';
+import { SlideStream } from './stream.js';
 import type { AiImageInput, AiProvider } from './types.js';
 
 export interface LoopIteration {
@@ -28,164 +29,123 @@ export interface GenerationResult {
   finalErrors: CheckError[];
 }
 
-async function loadScreenshotInputs(paths: string[], slideNumbers: number[]): Promise<AiImageInput[]> {
-  const selected = new Set<number>();
-  for (const slide of slideNumbers) {
-    if (slide > 0) selected.add(slide);
-    if (selected.size >= 2) break;
-  }
-  const images: AiImageInput[] = [];
-  for (const slide of selected) {
-    const path = paths[slide - 1];
-    if (!path) continue;
-    images.push({ path, mimeType: 'image/png', dataBase64: await readFile(path, 'base64') });
-  }
-  return images;
-}
-
-function validationErrors(yamlText: string): CheckError[] | null {
-  const parsed = parseDeckYaml(yamlText);
-  if (parsed.ok) return null;
-  return schemaErrorsFromZod(parsed.errors as never);
-}
-
-async function evaluateYaml(yamlText: string, outDir: string): Promise<{ deck?: Deck; errors: CheckError[]; screenshots: string[]; htmlPath?: string; validSchema: boolean }> {
-  const schemaErrors = validationErrors(yamlText);
-  if (schemaErrors) return { errors: schemaErrors, screenshots: [], validSchema: false };
-  const deckPath = join(outDir, 'deck.yaml');
-  await writeFile(deckPath, yamlText, 'utf8');
-  try {
-    const build = await buildDeck(deckPath, outDir);
-    const check: CheckResult = await checkRenderedDeck(build.htmlPath, { screenshotsDir: join(outDir, 'screenshots') });
-    const errors = [...build.semanticErrors, ...check.errors];
-    return { deck: build.deck, errors, screenshots: check.screenshots, htmlPath: build.htmlPath, validSchema: true };
-  } catch (error) {
-    if (error instanceof DeckValidationError) return { errors: error.errors, screenshots: [], validSchema: false };
-    throw error;
-  }
-}
-
-export async function generateWithFixLoop(options: {
+export type Phase = 'yaml' | 'build' | 'check' | 'fix';
+interface Options {
   overview: string;
   outDir: string;
   provider?: AiProvider;
   maxIterations?: number;
   onIteration?: (iteration: LoopIteration) => void;
-}): Promise<GenerationResult> {
+  onText?: (chars: number) => void;
+  onPhase?: (phase: Phase, iteration: number) => void;
+  onPreview?: (deck: Deck, iteration: number) => void;
+}
+
+async function screenshotInputs(paths: string[], errors: CheckError[]): Promise<AiImageInput[]> {
+  const slides = [...new Set(errors.map((error) => error.slide).filter((i) => paths[i - 1]))].slice(0, 2);
+  return Promise.all(slides.map(async (i) => ({
+    path: paths[i - 1], mimeType: 'image/png' as const, dataBase64: await readFile(paths[i - 1], 'base64'),
+  })));
+}
+
+async function runLoop(options: Options, original?: string, revision?: Revision): Promise<GenerationResult> {
   const outDir = resolve(options.outDir);
   await mkdir(outDir, { recursive: true });
   const animations = await loadAnimationCatalog(process.cwd());
   const provider = options.provider ?? createAiProvider();
-  const maxIterations = options.maxIterations ?? 3;
+  const edit = revision && prepareEdit(revision, options.overview);
   const iterations: LoopIteration[] = [];
-
-  let yaml = extractYamlText(await provider.complete({ prompt: generationPrompt(options.overview, animations), maxOutputTokens: 8192 }));
-  let finalErrors: CheckError[] = [];
+  const deckPath = join(outDir, 'deck.yaml');
+  let yaml = original ?? '';
+  let lastReply = '';
   let htmlPath: string | undefined;
-  let ok = false;
-
-  for (let iteration = 1; iteration <= maxIterations; iteration += 1) {
-    const iterationDir = iteration === 1 ? outDir : join(outDir, `iteration-${iteration}`);
-    await mkdir(iterationDir, { recursive: true });
-    const evaluated = await evaluateYaml(yaml, iterationDir);
-    finalErrors = evaluated.errors;
-    htmlPath = evaluated.htmlPath;
-    const record = {
-      iteration,
-      yaml,
-      errors: evaluated.errors,
-      screenshots: evaluated.screenshots,
-      validSchema: evaluated.validSchema,
-    };
+  let errors: CheckError[] = [];
+  let screenshots: string[] = [];
+  const attempts = options.maxIterations ?? 3;
+  if (!Number.isSafeInteger(attempts) || attempts < 1) throw new Error('maxIterations は1以上の整数を指定してください');
+  for (let iteration = 1; iteration <= attempts; iteration++) {
+    let patchError: CheckError | undefined;
+    if (!original || iteration > 1 || revision) {
+      options.onPhase?.(iteration === 1 ? 'yaml' : 'fix', iteration);
+      const scoped = edit && edit.target.kind !== 'deck';
+      const stream = options.onPreview && !scoped
+        ? new SlideStream((deck) => options.onPreview!(deck, iteration)) : undefined;
+      let prompt: string;
+      if (edit && revision && (iteration === 1 || scoped)) {
+        prompt = revisionPrompt(edit, revision.yaml);
+        if (iteration > 1) prompt += `\n前回の出力:\n${lastReply}\n同じ対象範囲で検証エラーを直してください:\n${JSON.stringify(errors)}`;
+      } else if (iteration > 1) {
+        prompt = fixPrompt({ overview: options.overview, currentYaml: yaml, animations, errors });
+      } else prompt = generationPrompt(options.overview, animations);
+      let chars = 0;
+      let reportedAt = 0;
+      const raw = await provider.complete({
+        prompt, edit: iteration === 1 || scoped ? edit : undefined,
+        images: await screenshotInputs(screenshots, errors),
+        onText: options.onText || stream ? (chunk) => {
+          stream?.push(chunk);
+          chars += chunk.length;
+          if (Date.now() - reportedAt > 100) { options.onText?.(chars); reportedAt = Date.now(); }
+        } : undefined,
+      });
+      if (chars) options.onText?.(chars);
+      lastReply = scoped ? raw.trim().replace(/^```(?:yaml|yml)?\s*|\s*```$/gi, '') : extractYamlText(raw);
+      try {
+        yaml = revision ? applyReply(revision, lastReply) : lastReply;
+        stream?.finish(yaml);
+      } catch (error) {
+        patchError = schemaIssueToCheckError('slides', String(error));
+      }
+    }
+    const parsed = parseDeckYaml(yaml);
+    errors = patchError ? [patchError] : parsed.ok ? [] : schemaErrorsFromZod(parsed.errors);
+    screenshots = [];
+    htmlPath = undefined;
+    if (parsed.ok && !patchError) {
+      options.onPhase?.('build', iteration);
+      const directory = iteration === 1 ? outDir : join(outDir, `iteration-${iteration}`);
+      await mkdir(directory, { recursive: true });
+      const candidatePath = join(directory, 'deck.yaml');
+      await writeFile(candidatePath, yaml);
+      const build = await buildDeck(candidatePath, directory);
+      htmlPath = build.htmlPath;
+      options.onPhase?.('check', iteration);
+      const check = await checkRenderedDeck(htmlPath, { screenshotsDir: join(directory, 'screenshots') });
+      errors = [...build.semanticErrors, ...check.errors];
+      screenshots = check.screenshots;
+    }
+    const record = { iteration, yaml, errors, screenshots, validSchema: parsed.ok && !patchError };
     iterations.push(record);
     options.onIteration?.(record);
-    if (evaluated.errors.length === 0) {
-      ok = true;
-      if (iterationDir !== outDir) {
-        await writeFile(join(outDir, 'deck.yaml'), yaml, 'utf8');
-        const finalBuild = await buildDeck(join(outDir, 'deck.yaml'), outDir);
-        htmlPath = finalBuild.htmlPath;
-      }
-      break;
-    }
-    if (iteration === maxIterations) break;
-    const images = await loadScreenshotInputs(evaluated.screenshots, evaluated.errors.map((error) => error.slide));
-    yaml = extractYamlText(await provider.complete({
-      prompt: fixPrompt({ overview: options.overview, currentYaml: yaml, errors: evaluated.errors, animations }),
-      images,
-      maxOutputTokens: 8192,
-    }));
+    if (!errors.length) break;
   }
-
-  const deckPath = join(outDir, 'deck.yaml');
-  await writeFile(deckPath, yaml, 'utf8');
-  return {
-    provider: provider.name,
-    model: provider.model,
-    outDir,
-    deckPath,
-    htmlPath,
-    ok,
-    iterations,
-    finalErrors,
-  };
+  await writeFile(deckPath, yaml);
+  if (htmlPath && htmlPath !== join(outDir, 'index.html')) {
+    await copyFile(htmlPath, join(outDir, 'index.html'));
+    htmlPath = join(outDir, 'index.html');
+  }
+  return { provider: provider.name, model: provider.model, outDir, deckPath, htmlPath,
+    ok: !errors.length, iterations, finalErrors: errors };
 }
 
-export async function fixExistingDeck(options: {
-  deckPath: string;
-  overview?: string;
-  outDir?: string;
-  provider?: AiProvider;
-  maxIterations?: number;
-  onIteration?: (iteration: LoopIteration) => void;
-}): Promise<GenerationResult> {
-  const originalYaml = await readFile(options.deckPath, 'utf8');
-  const outDir = resolve(options.outDir ?? join('out', 'fix'));
-  await mkdir(outDir, { recursive: true });
-  const animations: AnimationSpec[] = await loadAnimationCatalog(process.cwd());
-  const provider = options.provider ?? createAiProvider();
-  const maxIterations = options.maxIterations ?? 3;
-  const overview = options.overview ?? '既存 deck.yaml の修正';
-  const iterations: LoopIteration[] = [];
-  let yaml = originalYaml;
-  let finalErrors: CheckError[] = [];
-  let htmlPath: string | undefined;
-  let ok = false;
+export function generateWithFixLoop(options: Options) {
+  return runLoop(options);
+}
 
-  for (let iteration = 1; iteration <= maxIterations; iteration += 1) {
-    const evaluated = await evaluateYaml(yaml, outDir);
-    finalErrors = evaluated.errors;
-    htmlPath = evaluated.htmlPath;
-    const record = { iteration, yaml, errors: evaluated.errors, screenshots: evaluated.screenshots, validSchema: evaluated.validSchema };
-    iterations.push(record);
-    options.onIteration?.(record);
-    if (!evaluated.errors.length) {
-      ok = true;
-      break;
-    }
-    if (iteration === maxIterations) break;
-    const images = await loadScreenshotInputs(evaluated.screenshots, evaluated.errors.map((error) => error.slide));
-    yaml = extractYamlText(await provider.complete({
-      prompt: fixPrompt({ overview, currentYaml: yaml, errors: evaluated.errors, animations }),
-      images,
-      maxOutputTokens: 8192,
-    }));
-  }
-
-  const fixedDeckPath = join(outDir, 'deck.fixed.yaml');
-  await writeFile(fixedDeckPath, yaml, 'utf8');
-  return { provider: provider.name, model: provider.model, outDir, deckPath: fixedDeckPath, htmlPath, ok, iterations, finalErrors };
+export async function fixExistingDeck(options: Omit<Options, 'overview' | 'outDir'> & {
+  deckPath: string; overview?: string; outDir?: string; target?: Revision['target'];
+}) {
+  const original = await readFile(options.deckPath, 'utf8');
+  const result = await runLoop({ ...options, overview: options.overview ?? '既存 deck.yaml の修正',
+    outDir: options.outDir ?? join('out', 'fix') }, original,
+    options.target ? { yaml: original, target: options.target } : undefined);
+  const fixed = join(result.outDir, 'deck.fixed.yaml');
+  await writeFile(fixed, await readFile(result.deckPath));
+  return { ...result, deckPath: fixed };
 }
 
 export function deckFromYamlText(yamlText: string): Deck | undefined {
-  try {
-    const parsed = parseDeckYaml(yamlText);
-    return parsed.ok ? parsed.deck : undefined;
-  } catch {
-    return undefined;
-  }
+  const parsed = parseDeckYaml(yamlText);
+  return parsed.ok ? parsed.deck : undefined;
 }
-
-export function parseLenientYaml(yamlText: string): unknown {
-  return parseYaml(yamlText);
-}
+export function parseLenientYaml(yamlText: string): unknown { return parseYaml(yamlText); }

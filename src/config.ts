@@ -50,6 +50,6 @@ export function configuredModel(provider: ProviderName): string {
   loadDotEnv();
   if (process.env.URUSHI_MODEL) return process.env.URUSHI_MODEL;
   if (provider === 'vertex-claude') return 'claude-sonnet-5-5';
-  if (provider === 'vertex-gemini') return 'gemini-3.8-flash';
+  if (provider === 'vertex-gemini') return 'gemini-4-neon';
   return 'mock';
 }

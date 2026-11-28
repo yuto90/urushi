@@ -1,3 +1,5 @@
+import { createChartPlayer } from './chart-player.js';
+
 export const deckRuntimeJs = `
 (function () {
   var WIDTH = 1920;
@@ -8,6 +10,7 @@ export const deckRuntimeJs = `
   var current = 0;
   var params = new URLSearchParams(window.location.search);
   var staticMode = params.has('static') || params.has('print');
+  var chartPlayer = (${createChartPlayer.toString()})(slides, window.gsap, params.has('print'));
   var specs = window.__URUSHI_ANIMATIONS__ || {};
 
   if (params.has('print')) document.documentElement.classList.add('print-mode');
@@ -128,18 +131,21 @@ export const deckRuntimeJs = `
 
   function go(index, options) {
     if (!slides.length) return;
+    var previous = current;
     current = Math.max(0, Math.min(slides.length - 1, index));
     slides.forEach(function (slide, slideIndex) {
       slide.classList.toggle('active', slideIndex === current);
     });
+    chartPlayer(previous, current, !staticMode && (!options || options.animate !== false));
     updateFooter();
+    if (window.parent !== window && (!options || options.notify !== false)) window.parent.postMessage({ type: 'urushi:slide', index: current }, '*');
     if (!options || options.animate !== false) playSlide(slides[current]);
     if (!options || options.hash !== false) {
       try { history.replaceState(null, '', '#/' + (current + 1)); } catch (_) {}
     }
   }
 
-  function next() { go(current + 1); }
+  function next() { if (current + 1 < slides.length) go(current + 1); }
   function prev() { go(current - 1); }
 
   document.addEventListener('keydown', function (event) {
@@ -154,6 +160,21 @@ export const deckRuntimeJs = `
     if (x > window.innerWidth * 0.72) next();
   });
   window.addEventListener('resize', scaleDeck);
+  window.addEventListener('message', function (event) {
+    if (window === window.parent || event.source !== window.parent || !event.data) return;
+    if (event.data.type === 'urushi:key') {
+      if (event.data.key === 'ArrowRight') next();
+      if (event.data.key === 'ArrowLeft') prev();
+      return;
+    }
+    if (!Number.isInteger(event.data.index)) return;
+    var index = event.data.index;
+    if (event.data.type === 'urushi:seek') go(index, { animate: false, hash: false });
+    if ((event.data.type === 'urushi:replay' || event.data.type === 'urushi:advance') && index > 0 && index < slides.length) {
+      go(index - 1, { animate: false, hash: false, notify: false });
+      go(index, { hash: false });
+    }
+  });
 
   window.__urushi = {
     go: go,
@@ -170,7 +191,7 @@ export const deckRuntimeJs = `
     var slideNumber = Number(window.location.hash.slice(2));
     if (slideNumber >= 1) initial = slideNumber - 1;
   }
-  go(initial, { hash: false, animate: false });
+  go(initial, { hash: false, animate: false, notify: false });
   if (!staticMode) window.requestAnimationFrame(function () { playSlide(slides[current]); });
 })();
 `;
