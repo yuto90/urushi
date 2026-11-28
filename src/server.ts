@@ -1,29 +1,24 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
-import { readFile, writeFile } from 'node:fs/promises';
+import { readFile, writeFile, mkdtemp } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { extname, join, normalize, resolve } from 'node:path';
-import { randomUUID } from 'node:crypto';
-import type { ProviderName } from './config.js';
-import { createAiProvider, generateWithFixLoop, type GenerationResult, type LoopIteration } from './ai/index.js';
-import { buildAndCheck, DeckValidationError, readDeckFile } from './pipeline.js';
+import { z } from 'zod';
+import { configuredProvider, type ProviderName } from './config.js';
+import { loadAnimationCatalog } from './animations/index.js';
+import { prepareEdit, targetSchema } from './ai/revision.js';
+import { parseDeckYaml } from './schema/index.js';
+import { renderDeckHtml, renderThumbnail } from './render/html.js';
+import { buildAndCheck, DeckValidationError } from './pipeline.js';
 import { exportDeck } from './export/index.js';
+import { jobs, newJob, openYaml, runGenerationJob, subscribe, type Job } from './server-jobs.js';
 
-interface Job {
-  id: string;
-  status: 'running' | 'done' | 'failed';
-  overview: string;
-  provider: ProviderName;
-  outDir: string;
-  createdAt: string;
-  iterations: LoopIteration[];
-  result?: GenerationResult;
-  error?: string;
-  exports?: { pdfPath?: string; pptxPath?: string; screenshots?: string[] };
-}
-
-const jobs = new Map<string, Job>();
-const publicDir = resolve('public');
-const outRoot = resolve('out', 'web');
+const publicDir = resolve('dist', 'editor');
+const providerSchema = z.enum(['mock', 'vertex-gemini', 'vertex-claude']);
+const generateBody = z.object({
+  overview: z.string().trim().min(1).max(16000),
+  provider: providerSchema.optional(), mock: z.boolean().optional(),
+  yaml: z.string().min(1).optional(), target: targetSchema.optional(),
+});
 
 function sendJson(response: ServerResponse, status: number, value: unknown): void {
   response.writeHead(status, { 'content-type': 'application/json; charset=utf-8' });
@@ -37,7 +32,12 @@ function sendText(response: ServerResponse, status: number, value: string, conte
 
 async function readBody(request: IncomingMessage): Promise<unknown> {
   const chunks: Buffer[] = [];
-  for await (const chunk of request) chunks.push(Buffer.from(chunk));
+  let bytes = 0;
+  for await (const chunk of request) {
+    bytes += chunk.length;
+    if (bytes > 4_000_000) throw new Error('入力は4 MB以内にしてください');
+    chunks.push(Buffer.from(chunk));
+  }
   if (!chunks.length) return {};
   return JSON.parse(Buffer.concat(chunks).toString('utf8')) as unknown;
 }
@@ -70,22 +70,6 @@ function jobSummary(job: Job) {
   };
 }
 
-async function runGenerationJob(job: Job): Promise<void> {
-  try {
-    job.result = await generateWithFixLoop({
-      overview: job.overview,
-      provider: createAiProvider(job.provider),
-      outDir: job.outDir,
-      maxIterations: 3,
-      onIteration: (iteration) => job.iterations.push(iteration),
-    });
-    job.status = 'done';
-  } catch (error) {
-    job.status = 'failed';
-    job.error = error instanceof Error ? error.message : String(error);
-  }
-}
-
 async function serveFile(response: ServerResponse, path: string, downloadName?: string): Promise<void> {
   if (!existsSync(path)) {
     sendText(response, 404, 'not found');
@@ -100,6 +84,7 @@ async function serveFile(response: ServerResponse, path: string, downloadName?: 
     '.png': 'image/png',
   };
   const headers: Record<string, string> = { 'content-type': types[extname(path)] ?? 'application/octet-stream' };
+  if (extname(path) === '.html') headers['content-security-policy'] = 'sandbox allow-scripts';
   if (downloadName) headers['content-disposition'] = `attachment; filename="${encodeURIComponent(downloadName)}"`;
   response.writeHead(200, headers);
   response.end(await readFile(path));
@@ -127,37 +112,45 @@ function getJob(id: string | undefined): Job | undefined {
   return id ? jobs.get(id) : undefined;
 }
 
-export async function startServer(port = 3333): Promise<void> {
+export async function startServer(port = 3333, defaultProvider = configuredProvider()): Promise<void> {
+  const animations = await loadAnimationCatalog(process.cwd());
   const server = createServer(async (request, response) => {
     try {
       const url = new URL(request.url ?? '/', `http://${request.headers.host ?? 'localhost'}`);
       const pathname = url.pathname;
 
+      if (request.method === 'POST' && pathname.startsWith('/api/') &&
+          !request.headers['content-type']?.includes('application/json') &&
+          request.headers.origin && request.headers.origin !== url.origin) {
+        sendJson(response, 403, { error: 'ローカル編集画面から送信してください' });
+        return;
+      }
+      if (request.method === 'GET' && pathname === '/api/config') {
+        sendJson(response, 200, { provider: defaultProvider });
+        return;
+      }
       if (request.method === 'POST' && pathname === '/api/generate') {
-        const body = (await readBody(request)) as { overview?: string; provider?: ProviderName; mock?: boolean };
-        const overview = body.overview?.trim();
-        if (!overview) {
-          sendJson(response, 400, { error: 'overview is required' });
-          return;
+        const body = generateBody.parse(await readBody(request));
+        const provider: ProviderName = body.mock ? 'mock' : body.provider ?? defaultProvider;
+        if (body.target && !body.yaml) { sendJson(response, 400, { error: '修正元の YAML が必要です' }); return; }
+        const revision = body.yaml ? { yaml: body.yaml, target: body.target ?? { kind: 'deck' as const } } : undefined;
+        if (revision) {
+          try { prepareEdit(revision, body.overview); }
+          catch (error) { sendJson(response, 422, { error: String(error) }); return; }
         }
-        const provider: ProviderName = body.mock ? 'mock' : body.provider ?? 'vertex-gemini';
-        const id = randomUUID();
-        const job: Job = {
-          id,
-          status: 'running',
-          overview,
-          provider,
-          outDir: join(outRoot, id),
-          createdAt: new Date().toISOString(),
-          iterations: [],
-        };
-        jobs.set(id, job);
-        void runGenerationJob(job);
-        sendJson(response, 202, { id, status: job.status });
+        const job = newJob(body.overview, provider);
+        void runGenerationJob(job, revision);
+        sendJson(response, 202, { id: job.id, status: job.status });
+        return;
+      }
+      if (request.method === 'POST' && pathname === '/api/render') {
+        const { yaml } = z.object({ yaml: z.string().min(1) }).parse(await readBody(request));
+        if (!parseDeckYaml(yaml).ok) { sendJson(response, 422, { error: '保存版の YAML を読み込めません' }); return; }
+        sendJson(response, 201, await openYaml(yaml, defaultProvider));
         return;
       }
 
-      const jobMatch = pathname.match(/^\/api\/jobs\/([a-f0-9-]+)(?:\/(html|yaml|export|download-pdf|download-pptx|rebuild))?$/);
+      const jobMatch = pathname.match(/^\/api\/jobs\/([a-f0-9-]+)(?:\/(events|thumb|html|yaml|export|download-pdf|download-pptx|rebuild))?$/);
       if (jobMatch) {
         const job = getJob(jobMatch[1]);
         if (!job) {
@@ -169,8 +162,23 @@ export async function startServer(port = 3333): Promise<void> {
           sendJson(response, 200, jobSummary(job));
           return;
         }
+        if (request.method === 'GET' && action === 'events') {
+          subscribe(job, response, Number(request.headers['last-event-id']) || 0);
+          return;
+        }
+        if (request.method === 'GET' && (action === 'thumb' || (action === 'html' && url.searchParams.has('snapshot')))) {
+          const deck = url.searchParams.has('snapshot')
+            ? job.snapshots[Number(url.searchParams.get('snapshot')) - 1] : job.deck;
+          if (!deck) { sendText(response, 404, 'プレビューがありません'); return; }
+          const index = Number(url.searchParams.get('slide'));
+          if (action === 'thumb' && !deck.slides[index]) { sendText(response, 404, '枚数を確認してください'); return; }
+          response.setHeader('content-security-policy', 'sandbox allow-scripts');
+          sendText(response, 200, action === 'thumb' ? renderThumbnail(deck, index) : renderDeckHtml(deck, animations), 'text/html; charset=utf-8');
+          return;
+        }
         if (request.method === 'GET' && action === 'html') {
-          await serveFile(response, job.result?.htmlPath ?? join(job.outDir, 'index.html'));
+          await serveFile(response, job.result?.htmlPath ?? join(job.outDir, 'index.html'),
+            url.searchParams.has('download') ? 'urushi.html' : undefined);
           return;
         }
         if (request.method === 'GET' && action === 'yaml') {
@@ -182,23 +190,24 @@ export async function startServer(port = 3333): Promise<void> {
             sendJson(response, 409, { error: 'HTML is not ready' });
             return;
           }
-          const builtYaml = join(job.outDir, 'deck.yaml');
-          let deck;
-          try {
-            deck = await readDeckFile(join(job.outDir, 'deck.yaml'));
-          } catch {
-            deck = undefined;
+          if (!job.exports) {
+            const source = job.result;
+            const pending = job.exporting ??= exportDeck(job.result.htmlPath, source.outDir, { pdf: true, pptx: true, deck: job.deck });
+            try {
+              const files = await pending;
+              if (job.result !== source) { sendJson(response, 409, { error: '書き出し中に資料が更新されました' }); return; }
+              job.exports = files;
+            } finally { if (job.exporting === pending) job.exporting = undefined; }
           }
-          job.exports = await exportDeck(job.result.htmlPath, job.outDir, { pdf: true, pptx: true, deck });
-          sendJson(response, 200, { ok: true, exports: job.exports, yaml: existsSync(builtYaml) });
+          sendJson(response, 200, { ok: true, exports: job.exports, yaml: true });
           return;
         }
         if (request.method === 'GET' && action === 'download-pdf') {
-          await serveFile(response, job.exports?.pdfPath ?? join(job.outDir, 'deck.pdf'), `${job.id}.pdf`);
+          await serveFile(response, job.exports?.pdfPath ?? join(job.result?.outDir ?? job.outDir, 'deck.pdf'), `${job.id}.pdf`);
           return;
         }
         if (request.method === 'GET' && action === 'download-pptx') {
-          await serveFile(response, job.exports?.pptxPath ?? join(job.outDir, 'deck.pptx'), `${job.id}.pptx`);
+          await serveFile(response, job.exports?.pptxPath ?? join(job.result?.outDir ?? job.outDir, 'deck.pptx'), `${job.id}.pptx`);
           return;
         }
         if (request.method === 'POST' && action === 'rebuild') {
@@ -207,14 +216,19 @@ export async function startServer(port = 3333): Promise<void> {
             sendJson(response, 400, { error: 'yaml is required' });
             return;
           }
-          const deckPath = join(job.outDir, 'deck.yaml');
+          if (job.status === 'running') { sendJson(response, 409, { error: '生成中です' }); return; }
+          const directory = await mkdtemp(join(job.outDir, 'rebuild-'));
+          const deckPath = join(directory, 'deck.yaml');
           await writeFile(deckPath, body.yaml, 'utf8');
           try {
-            const rebuilt = await buildAndCheck(deckPath, job.outDir);
+            const rebuilt = await buildAndCheck(deckPath, directory);
+            job.deck = rebuilt.build.deck;
+            job.exports = undefined;
+            job.exporting = undefined;
             job.result = {
               provider: job.result?.provider ?? 'manual',
               model: job.result?.model ?? 'yaml-edit',
-              outDir: job.outDir,
+              outDir: directory,
               deckPath,
               htmlPath: rebuilt.build.htmlPath,
               ok: rebuilt.check.ok,
@@ -239,12 +253,14 @@ export async function startServer(port = 3333): Promise<void> {
       }
       sendText(response, 404, 'not found');
     } catch (error) {
-      sendJson(response, 500, { error: error instanceof Error ? error.message : String(error) });
+      sendJson(response, error instanceof z.ZodError || error instanceof SyntaxError ? 400 : 500, { error: error instanceof Error ? error.message : String(error) });
     }
   });
 
-  await new Promise<void>((resolvePromise) => {
-    server.listen(port, () => resolvePromise());
+  await new Promise<void>((resolvePromise, rejectPromise) => {
+    server.once('error', (error) => rejectPromise(error));
+    server.listen(port, '127.0.0.1', () => resolvePromise());
   });
-  console.log(`Urushi Web UI: http://localhost:${port}`);
+  const address = server.address();
+  console.log(`Urushi Web UI: http://localhost:${typeof address === 'object' ? address?.port : port}`);
 }

@@ -18,11 +18,22 @@ export class VertexClaudeProvider implements AiProvider {
       content.push({ type: 'image', source: { type: 'base64', media_type: image.mimeType, data: image.dataBase64 } });
     }
     content.push({ type: 'text', text: request.prompt });
-    const response = await this.client.messages.create({
+    const input = {
       model: this.model,
       max_tokens: request.maxOutputTokens ?? 8192,
-      messages: [{ role: 'user', content: content as never }],
-    });
+      messages: [{ role: 'user' as const, content: content as never }],
+    };
+    if (request.onText) {
+      let text = '';
+      for await (const event of await this.client.messages.create({ ...input, stream: true })) {
+        if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
+          text += event.delta.text;
+          request.onText(event.delta.text);
+        }
+      }
+      return text;
+    }
+    const response = await this.client.messages.create(input);
     return response.content.map((block) => (block.type === 'text' ? block.text : '')).join('\n');
   }
 }

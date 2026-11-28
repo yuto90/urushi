@@ -205,7 +205,7 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
   if (command === 'export') return commandExport(args);
   if (command === 'schema') return commandSchema(args);
   if (command === 'serve') {
-    await startServer(optionNumber(args.options, 'port') ?? Number(process.env.PORT ?? 3333));
+    await startServer(optionNumber(args.options, 'port') ?? Number(process.env.PORT ?? 3333), providerOption(args.options));
     return 0;
   }
   if (command === 'mcp') {

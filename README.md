@@ -54,7 +54,7 @@ Vertex AI API が無効な場合は、オーナー権限のある人が有効化
 gcloud services enable aiplatform.googleapis.com
 ```
 
-Claude on Vertex AI を使う場合は、さらに Model Garden で対象モデルの有効化と、リージョン/グローバル online prediction quota の確保が必要です。Gemini 3.x 系は `global` / `us` / `eu` など、モデルが提供されているロケーションを選んでください。
+Claude on Vertex AI を使う場合は、さらに Model Garden で対象モデルの有効化と、リージョン/グローバル online prediction quota の確保が必要です。Gemini は `global` / `us` / `eu` など、モデルが提供されているロケーションを選んでください。
 
 ## セットアップ
 
@@ -69,7 +69,7 @@ cp .env.example .env
 GOOGLE_CLOUD_PROJECT=your-gcp-project-id
 GOOGLE_CLOUD_LOCATION=global
 URUSHI_PROVIDER=vertex-gemini
-URUSHI_MODEL=gemini-3.8-flash
+URUSHI_MODEL=gemini-4-neon
 PORT=3333
 ```
 
@@ -79,7 +79,7 @@ PORT=3333
 
 | Provider | 実装 | 既定モデル |
 | --- | --- | --- |
-| `vertex-gemini` | `@google/genai` の Vertex AI mode | `gemini-3.8-flash` |
+| `vertex-gemini` | `@google/genai` の Vertex AI mode | `gemini-4-neon` |
 | `vertex-claude` | `@anthropic-ai/vertex-sdk` | `claude-sonnet-5-5` |
 | `mock` | 外部APIを呼ばない決定的モック | `mock` |
 
@@ -134,13 +134,15 @@ npm run dev
 
 <http://localhost:3333> を開きます。
 
-- 概要入力
-- Provider 選択
-- 生成・自己修正ループの進行表示
-- デッキプレビュー
-- 検証エラー一覧
-- `deck.yaml` の直接編集と再ビルド
-- PDF / PPTX ダウンロード
+最初の要望を入力し、Enter で送信します。Shift+Enter は改行です。生成中は受信した YAML から完成済みのページを表示し、検証と自己修正の進行をチャットに表示します。モックを既定にするには `npm run dev -- --provider mock` を使います。
+
+「年間売上を3つの節目で」は、モックで [年間売上の例](examples/annual-sales.yaml) を開きます。サムネイルで状態を選び、発表中は →・← で進行します。「この1枚を修正」「この区間を修正」で対象を指定できます。区間の修正版には変更前後の再生ボタンが表示されます。
+
+版を選んで「この版を復元」を押すと、同じ YAML の新版が末尾に加わります。会話と全版は同じブラウザの IndexedDB に保存します。「書き出し」から単体 HTML・PDF・PPTX またはバックアップ JSON を保存でき、ホームの「JSON を読み込む」で別ブラウザに引き継げます。
+
+回帰テストは `npm test`、実 Gemini の生成・区間修正はサーバーを起動して `node tests/vertex.mjs` で確認できます。実モデルのテストは通常のテストから独立しています。
+
+React のソースは `public/`、Vite の静的ビルドは `dist/editor/` です。ローカルサーバーが編集画面と `/api/` を配信します。`POST /api/generate` は新規・修正ジョブ、`GET /api/jobs/:id/events` は進捗と描画可能な版を伝える SSE、`POST /api/render` は保存済み YAML の再描画です。
 
 ## MCP server
 
@@ -170,6 +172,7 @@ stdio MCP サーバーとして、同じ中核を包んだ `generate` / `render`
 - `causal`: 因果
 - `process`: 手順
 - `list`: 一覧
+- `chart`: `charts` 内の共通の棒グラフまたは工程図（`kind: flow`）を参照する節目（見出し・強調・内訳・区間のタイミング）
 - `custom`: 自由HTML（トークン逸脱は警告）
 
 例は [`examples/planning-proposal.yaml`](examples/planning-proposal.yaml) を参照してください。JSON Schema は `npm run schema` で再生成できます。

@@ -15,6 +15,7 @@ const typeLabels: Record<Slide['type'], string> = {
   process: '手順',
   list: '一覧',
   custom: '自由HTML',
+  chart: 'グラフ',
 };
 
 function textCheck(path: string, maxChars: number) {
@@ -246,7 +247,7 @@ function CustomTemplate(props: { slide: CustomSlide; index: number }) {
   );
 }
 
-export function SlideTemplate(props: { slide: Slide; index: number }) {
+export function SlideTemplate(props: { slide: Exclude<Slide, { type: 'chart' }>; index: number }) {
   switch (props.slide.type) {
     case 'conclusion':
       return <ConclusionTemplate slide={props.slide} index={props.index} />;

@@ -17,7 +17,7 @@ export class VertexGeminiProvider implements AiProvider {
     for (const image of request.images ?? []) {
       parts.push({ inlineData: { mimeType: image.mimeType, data: image.dataBase64 } });
     }
-    const response = await this.client.models.generateContent({
+    const input = {
       model: this.model,
       contents: [{ role: 'user', parts: parts as never }],
       config: {
@@ -25,7 +25,17 @@ export class VertexGeminiProvider implements AiProvider {
         temperature: request.temperature ?? 0.2,
         thinkingConfig: { thinkingLevel: 'LOW' as never },
       },
-    });
+    };
+    if (request.onText) {
+      let text = '';
+      for await (const chunk of await this.client.models.generateContentStream(input)) {
+        const delta = chunk.text ?? '';
+        text += delta;
+        if (delta) request.onText(delta);
+      }
+      return text;
+    }
+    const response = await this.client.models.generateContent(input);
     if (response.text) return response.text;
     const partsOut = response.candidates?.[0]?.content?.parts ?? [];
     return partsOut.map((part) => ('text' in part && typeof part.text === 'string' ? part.text : '')).join('\n');

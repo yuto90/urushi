@@ -1,3 +1,5 @@
+import type { EditRequest } from './revision.js';
+
 export interface AiImageInput {
   path: string;
   mimeType: 'image/png' | 'image/jpeg';
@@ -6,6 +8,8 @@ export interface AiImageInput {
 
 export interface AiCompleteRequest {
   prompt: string;
+  edit?: EditRequest;
+  onText?: (chunk: string) => void;
   images?: AiImageInput[];
   maxOutputTokens?: number;
   temperature?: number;
